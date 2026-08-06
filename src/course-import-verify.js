@@ -61,12 +61,28 @@ for (const m of rangesXml.matchAll(/<c\s+r="([A-Z]+)(\d+)"([^>]*?)(?:\/>|>([\s\S
 const OFFERING_COL = { Private: 'B', Public: 'C', 'Your Org': 'D' };
 const offering = B(23);
 check(OFFERING_COL[offering], `course offering type "${offering}" is not one of Private / Public / Your Org`);
+// Read the whole column: the builder appends rows past the template's own last one for item
+// types Coursera added after the template was published.
 const allowed = new Set();
-for (let r = 3; r <= 14; r++) {
-  const v = rangeCells[(OFFERING_COL[offering] || 'B') + r];
+const col = OFFERING_COL[offering] || 'B';
+for (const [ref, v] of Object.entries(rangeCells)) {
+  const m = ref.match(/^([A-Z]+)(\d+)$/);
+  if (!m || m[1] !== col || +m[2] < 3) continue;
   if (v && v !== 'Select an item type') allowed.add(v);
 }
 check(allowed.size > 0, 'could not read the item-type allow-list from the Ranges sheet');
+
+// Whatever the dropdown offers must be exactly what the Ranges column holds — an appended
+// type is useless if the validation range still stops short of it.
+const dvRange = sheetXml.match(/<formula1>'Ranges \(Please dont change\)'!\$E\$(\d+):\$E\$(\d+)<\/formula1>/);
+check(!!dvRange, 'item-type dropdown does not point at the Ranges sheet');
+if (dvRange) {
+  const eVals = [];
+  for (let r = +dvRange[1]; r <= +dvRange[2]; r++) if (rangeCells['E' + r]) eVals.push(rangeCells['E' + r]);
+  for (const t of new Set(course.modules.flatMap(m => m.lessons.flatMap(l => l.items.map(i => i.type))))) {
+    check(eVals.includes(t), `item type "${t}" is not inside the dropdown range E${dvRange[1]}:E${dvRange[2]}`);
+  }
+}
 
 // --- structure ---------------------------------------------------------------------------
 check(B(16) === course.title, `title mismatch: sheet "${B(16)}" vs course.json "${course.title}"`);
@@ -170,7 +186,7 @@ seenModules.forEach((m, mi) => {
 const dv = sheetXml.match(/<dataValidations>[\s\S]*?<\/dataValidations>/);
 check(!!dv, 'dataValidations block is missing — the item-type dropdown would be gone');
 if (dv) {
-  const typeDv = dv[0].match(/<dataValidation[^>]*sqref="([^"]*)"[^>]*>\s*<formula1>'Ranges[^<]*\$E\$3:\$E\$14<\/formula1>/);
+  const typeDv = dv[0].match(/<dataValidation[^>]*sqref="([^"]*)"[^>]*>\s*<formula1>'Ranges[^<]*\$E\$\d+:\$E\$\d+<\/formula1>/);
   check(!!typeDv, 'item-type dropdown no longer points at the Ranges sheet');
   if (typeDv) {
     const covered = new Set();

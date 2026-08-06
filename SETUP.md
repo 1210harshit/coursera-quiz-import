@@ -286,6 +286,8 @@ about the wording.
 | `ENOENT … work/<slug>/quiz/word/document.xml` | Source `.docx` not unzipped, or wrong slug. |
 | `Cannot find module … quiz.json` | Run the parse stages before build. |
 | `item type "X" is not offered under "Public"` | `offeringType` in `course.json` disagrees with the item types used. Both are legal — pick one. |
+| `WARN item types absent from the template's Ranges sheet` | Expected for `Roleplay`. The builder appends them and widens the dropdown. Only act on it if the name is a typo. |
+| `item type "X" is not inside the dropdown range` | The Ranges sheet was extended but the validation range was not, or vice versa. Rebuild rather than hand-patching. |
 | `lesson name "…" is not "Lesson N: Title"` | A hand edit to `course.json` broke the naming convention the verifier enforces. |
 | `EBUSY` / `EPERM` on build | The target `.docx` is open in Word or WPS. Close it. |
 | `no mapping in source` | The source omits it. Supply one explicitly in the parser's `MAPPING_FALLBACK`. |

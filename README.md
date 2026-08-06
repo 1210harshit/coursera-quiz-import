@@ -108,6 +108,8 @@ course, and troubleshooting.
 - lesson numbering restarts at 1 per module and the name matches its position
 - every item type is offered under the selected course offering type, read live from the
   **Ranges** sheet — not from a list hard-coded here
+- the item-type dropdown's source range actually reaches every type the course uses, so an
+  appended type is not left outside it
 - item type, name and duration are byte-identical to `course.json`
 - module time estimates equal the sum of their own items, and the course estimate the sum of all
 - IVQ flags and video types appear only on `Video` rows, and only dropdown-legal values
@@ -167,19 +169,31 @@ numbers, so after re-layout they would point at unrelated cells).
 
 Outlines describe items in their own vocabulary. The parsers normalise:
 
-| Outline label | Coursera item type |
-|---|---|
-| `Intro Video`, `Video N`, `Promo video` | Video |
-| `Reading` | Reading |
-| `DPQ` | Discussion Prompt |
-| `Hands-on-lab` | Ungraded Lab |
-| `Role Play` | Ungraded Plugin |
-| `Graded Quiz` | Assignment |
-| `Course-end Project` | Peer Review |
+| Outline label | Coursera item type | |
+|---|---|---|
+| `Intro Video`, `Video N`, `Promo video` | Video | |
+| `Reading` | Reading | |
+| `DPQ` | Discussion Prompt | |
+| `Hands-on-lab` | Peer Review | graded — the labs all end in a submitted deliverable |
+| `Role Play` | Roleplay | not in the bundled template; appended, see below |
+| `Graded Quiz` | Assignment | |
+| `Course-end Project` | Peer Review | |
 
-Every target above is valid under **both** the Private and the Public offering type, so the
-choice in `B23` cannot invalidate an import. The verifier re-checks each item against the
-allow-list the Ranges sheet publishes for whichever type is actually selected.
+The verifier re-checks each item against the allow-list the Ranges sheet publishes for
+whichever offering type is selected in `B23`, so a mapping that is legal under Private but not
+Public fails the build rather than the import.
+
+**Hands-on labs are graded.** They map to Peer Review, not Ungraded Lab, because every lab in
+these outlines ends in a submitted artefact ("Submit a document containing three versions…")
+rather than an in-platform lab environment. Each one therefore needs submission instructions
+and a rubric configured in Coursera after import — an Ungraded Lab would not.
+
+**Roleplay postdates the template.** Coursera's AI role-play item is not in the Course
+Template's Ranges lookup, so `course-import-build.js` appends any such type to rows 15+ of that
+sheet and widens the item-type dropdown to `$E$3:$E$<last>` to match. Without that the value
+still imports, but the dropdown rejects it the moment anyone edits the cell. The build prints
+a `WARN` naming every type it had to append; the verifier then confirms the dropdown range
+actually reaches it.
 
 Video format maps to the three the template's dropdown offers: `Talking Head` → *Talking
 head*, `Demo` / `Screenshare` → *Screen capture*, `Conceptual` / `Slides` → *Slide voiceover*.

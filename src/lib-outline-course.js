@@ -46,15 +46,22 @@ function readBlocks(documentXml) {
 /** True for the header row of a learning-items table. */
 const isItemHeader = cells => /^Learning Items?$/i.test((cells[0] || '').trim());
 
-// Outline item label -> Coursera item type. Every target type below is valid under both the
-// Private and the Public offering type, so the choice in B23 cannot invalidate an import.
+// Outline item label -> Coursera item type.
+//
+// Hands-on labs map to Peer Review, not Ungraded Lab: the labs in these outlines all end in a
+// submitted deliverable ("Submit a document containing three versions…"), which is a graded
+// peer-assessed artefact rather than an in-platform lab environment.
+//
+// Role plays map to Roleplay, Coursera's own AI role-play item. It postdates the bundled
+// Course Template, so it is absent from that workbook's Ranges lookup — the builder appends
+// any such type to the lookup at build time. See EXTRA_ITEM_TYPES in course-import-build.js.
 function itemType(label) {
   const l = (label || '').trim();
   if (/^(intro\s*video|video\s*\d*|promo\s*video)/i.test(l)) return 'Video';
   if (/^reading/i.test(l))                                   return 'Reading';
   if (/^(dpq|discussion)/i.test(l))                          return 'Discussion Prompt';
-  if (/^hands[-\s]?on/i.test(l))                             return 'Ungraded Lab';
-  if (/^role\s*play/i.test(l))                               return 'Ungraded Plugin';
+  if (/^hands[-\s]?on/i.test(l))                             return 'Peer Review';
+  if (/^role\s*play/i.test(l))                               return 'Roleplay';
   if (/^graded\s*quiz/i.test(l))                             return 'Assignment';
   if (/^course[-\s]?end\s*project/i.test(l))                 return 'Peer Review';
   return null;

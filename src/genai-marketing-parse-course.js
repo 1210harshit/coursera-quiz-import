@@ -113,7 +113,7 @@ for (const b of blocks) {
 
     let min = minutes(est);
     if (min === null) {
-      min = type === 'Ungraded Plugin' ? ROLE_PLAY_DEFAULT : 5;
+      min = type === 'Roleplay' ? ROLE_PLAY_DEFAULT : 5;
       warnings.push(`${label} "${title || desc.slice(0, 40)}": no Est. Time in source, assumed ${min} mins`);
     }
 
