@@ -168,7 +168,7 @@ public link.
 
 ### Slugs with a course-content parser
 
-`genai-marketing` · `cstp-course-1` · `management-mastery`
+`genai-marketing` · `cstp-course-1` · `management-mastery` · `ai-toolkit`
 
 ### One exception
 

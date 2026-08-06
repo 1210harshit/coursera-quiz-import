@@ -258,6 +258,7 @@ Quirks each parser exists to absorb.
 | **pm-course-3** | One question uses lowercase unspaced labels (`a.(Incorrect)`) and trailing em dashes on every option. |
 | **cstp-course-1** | Three files, three anchor styles; Module 2's incorrect explanations are unlabelled bullets matched positionally. |
 | **genai-appdev** | Struck-through text throughout; answer key given *only* by a `(Correct)` marker. |
+| **ai-toolkit** | Bare headings as `cstp-course-1`. DPQ rows put the questions in the *Title* column and the placeholder in the description — inverted from every other source. Video descriptions carry a literal `Description: ` label. Aligned objectives state only an id (`LO4`), resolved against Part 1. Lead Instructor is still the template placeholder, so Writer/SME is left blank. Part 1 also holds tool-application tables, ignored because their header cell is not "Learning Items". |
 | **management-mastery** | Struck draft wording; one question carries two complete option sets. |
 
 ### Course-content parser notes
