@@ -10,6 +10,7 @@ dist/
 # Parsed intermediates
 quiz.json
 outline.json
+course.json
 *.lines.txt
 *.clean.txt
 

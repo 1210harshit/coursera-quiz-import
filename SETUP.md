@@ -35,12 +35,14 @@ Scripts read and write under `work/`, which is **git-ignored** — course docume
 coursera-quiz-import/
   src/                      the scripts (in git)
   work/                     your data (ignored)
-    tmpl/                   Coursera's import template, unzipped   <- required once
+    tmpl/                   Coursera's Assignment Import Template, unzipped   <- quiz pipeline
+    tmpl-course/            Coursera's Course Template, unzipped              <- course pipeline
     <course-slug>/
       quiz/                 graded assessment .docx, unzipped
       outline/              course outline .docx, unzipped
       quiz.json             produced by parse-quiz
       outline.json          produced by parse-outline
+      course.json           produced by parse-course
       dist/                 produced by build — the files you upload
 ```
 
@@ -50,17 +52,30 @@ Override the root with `QUIZ_WORK` if you'd rather keep data elsewhere:
 QUIZ_WORK=/path/to/data node src/osha-build.js /path/to/data/osha/dist
 ```
 
-### 3a. The template (required, once)
+### 3a. The templates (required, once per pipeline)
 
-Every builder clones Coursera's **Assignment Import Template** to inherit its styles, headers
-and hyperlink relationships. Download it from Coursera (the *Import* dialog on any quiz links
-to it), then unzip it into `work/tmpl/`:
+Every builder clones a Coursera template rather than authoring from scratch, so the generated
+file inherits styles, dropdowns and relationships the importer depends on.
+
+**Quiz pipeline** — the **Assignment Import Template**. Download it from Coursera (the *Import*
+dialog on any quiz links to it), then:
 
 ```bash
 mkdir -p work/tmpl && unzip -q "Coursera Assignment Import Template.docx" -d work/tmpl
 ```
 
-`work/tmpl/word/document.xml` must exist. Without it every build fails immediately.
+`work/tmpl/word/document.xml` must exist. Without it every quiz build fails immediately.
+
+**Course-content pipeline** — the **Course Template** (`.xlsx`), linked from *Edit Content* →
+*Import*:
+
+```bash
+mkdir -p work/tmpl-course && unzip -q "Coursera Course Template.xlsx" -d work/tmpl-course
+```
+
+`work/tmpl-course/xl/worksheets/sheet3.xml` is the **FOR IMPORT** sheet and must exist. Do not
+substitute a re-saved copy from Excel unless you have checked that the *Ranges* sheet and the
+sheet-3 data validations survived — the builder reads both.
 
 ---
 
@@ -104,6 +119,52 @@ The `.docx` files in `work/genai-retail/dist/` are what you upload — one per m
 `osha` · `genai-marketing` · `genai-marketing-explanations` · `genai-retail` ·
 `genai-appdev` · `management-mastery` · `pm-course-1` · `pm-course-2` · `pm-course-3` ·
 `cstp-course-1`
+
+---
+
+## 4b. Run a course-content import
+
+Only the outline is needed. `genai-marketing` as the example:
+
+```bash
+mkdir -p work/genai-marketing
+unzip -q "Outline - GenAI for Marketing.docx" -d work/genai-marketing/outline
+```
+
+```bash
+node src/genai-marketing-parse-course.js --report
+```
+
+Read the warnings before going further — they name every duration the source left blank and
+every item label the parser did not recognise. When they are understood:
+
+```bash
+node src/genai-marketing-parse-course.js > work/genai-marketing/course.json
+```
+
+`course.json` is meant to be edited. Module learning objectives in particular come straight
+from the outline's aligned-objective line, which is usually one sentence; author richer ones
+here rather than in the spreadsheet, so a rebuild does not discard them.
+
+```bash
+node src/course-import-build.js  genai-marketing
+node src/course-import-verify.js genai-marketing
+```
+
+A clean run ends with:
+
+```
+✅ ALL CHECKS PASSED — GenAI for Marketing & Customer Engagement - Coursera Import.xlsx
+   4 modules, 13 lessons, 61 items, 36 IVQs, 8h 6m, all types valid under "Private".
+```
+
+Upload the single `.xlsx` in `work/genai-marketing/dist/` via **Edit Content → Import** on the
+course offering. It creates the outline and triggers uploads for any item that carries a
+public link.
+
+### Slugs with a course-content parser
+
+`genai-marketing` · `cstp-course-1`
 
 ### One exception
 
@@ -179,6 +240,22 @@ Point its `SP` paths at your slug, adjust the anchor and label regexes, and iter
 `--report`. Then copy the matching `-build.js` and `-verify.js`, updating the two data paths
 and the output filename.
 
+### A course-content parser
+
+Cheaper — only the parser is new, since `course-import-build.js` and `course-import-verify.js`
+serve every course. Copy whichever existing `*-parse-course.js` matches the heading grammar:
+
+| Outline shape | Start from |
+|---|---|
+| `Module N: Name` / `Lesson N: Name` headings | `genai-marketing` |
+| Bare `Module N` + `Title of the Module:` on the next line | `cstp-course-1` |
+| One document holding several courses | `cstp-course-1` (it stops at the next `Course N`) |
+
+The item mapping, duration rules and block reader come from `lib-outline-course.js`, so a new
+parser is usually just the heading regexes plus its own defaults for whatever the source
+leaves blank. Iterate with `--report` until every warning is one you have decided about — a
+blank duration is a real editorial choice, not noise to clear.
+
 ---
 
 ## 7. Import rules that bite
@@ -204,9 +281,12 @@ about the wording.
 
 | Message | Cause |
 |---|---|
-| `ENOENT … work/tmpl/word/document.xml` | Template not unzipped — see 3a. |
+| `ENOENT … work/tmpl/word/document.xml` | Assignment template not unzipped — see 3a. |
+| `ENOENT … work/tmpl-course/xl/…/sheet3.xml` | Course template not unzipped — see 3a. |
 | `ENOENT … work/<slug>/quiz/word/document.xml` | Source `.docx` not unzipped, or wrong slug. |
 | `Cannot find module … quiz.json` | Run the parse stages before build. |
+| `item type "X" is not offered under "Public"` | `offeringType` in `course.json` disagrees with the item types used. Both are legal — pick one. |
+| `lesson name "…" is not "Lesson N: Title"` | A hand edit to `course.json` broke the naming convention the verifier enforces. |
 | `EBUSY` / `EPERM` on build | The target `.docx` is open in Word or WPS. Close it. |
 | `no mapping in source` | The source omits it. Supply one explicitly in the parser's `MAPPING_FALLBACK`. |
 | `line break inside import section` | A builder edit introduced `<w:br/>`. Keep the import section break-free. |

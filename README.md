@@ -1,12 +1,17 @@
-# Coursera Quiz Import Builder
+# Coursera Import Builders
 
-Tooling that turns a course's **graded assessment** and **course outline** (both `.docx`) into
-**Coursera Assignment Import documents** — one per module, ready to upload via a quiz item's
-**Import** button.
+Tooling that turns a course's source `.docx` documents into the files Coursera's importers
+accept. Two independent pipelines share this repository:
 
-Each generated document follows Coursera's Assignment Import Template: a machine-read
-*Import Section* between two marker lines, plus a human-facing *Guide Section* that the
-importer ignores.
+| Pipeline | In | Out | Uploaded via |
+|---|---|---|---|
+| **Quiz import** | graded assessment + outline `.docx` | one **Assignment Import** `.docx` per module | **Import** on a quiz item |
+| **Course-content import** | course outline `.docx` | one **Course Import** `.xlsx` | **Import** in *Edit Content* |
+
+Each generated assignment document follows Coursera's Assignment Import Template: a
+machine-read *Import Section* between two marker lines, plus a human-facing *Guide Section*
+that the importer ignores. Each generated course-import workbook is Coursera's own Course
+Template with its **FOR IMPORT** sheet filled in.
 
 No course content lives in this repository — only the scripts.
 
@@ -57,9 +62,10 @@ Feedback: <explanation> (Refer to M1L1V1: <video title>)
 
 ---
 
-## Pipeline
+## Quiz import pipeline
 
-Three stages per course, plus shared libraries.
+Three stages per course, plus shared libraries. For the course-content pipeline see
+[Course-content import](#course-content-import) below.
 
 ```
 <course>-parse-quiz.js     .docx  ->  quiz.json      questions, options, key, feedback, mapping
@@ -94,9 +100,22 @@ course, and troubleshooting.
 
 ---
 
-## What the verifier checks
+## What the verifiers check
 
-`*-verify.js` re-opens the generated `.docx` and asserts, per question:
+`course-import-verify.js` re-opens the generated `.xlsx` and asserts:
+
+- module and lesson counts match `course.json`, and every `***Name` is filled
+- lesson numbering restarts at 1 per module and the name matches its position
+- every item type is offered under the selected course offering type, read live from the
+  **Ranges** sheet — not from a list hard-coded here
+- item type, name and duration are byte-identical to `course.json`
+- module time estimates equal the sum of their own items, and the course estimate the sum of all
+- IVQ flags and video types appear only on `Video` rows, and only dropdown-legal values
+- no template placeholder string (`[Module name goes here]`, …) survived anywhere
+- the item-type dropdown's `sqref` still covers every item row after re-layout
+- package sanity: all four sheets present, no relationship pointing at a dropped part
+
+`*-verify.js` (quiz) re-opens the generated `.docx` and asserts, per question:
 
 - exact line grammar `HEADER → PROMPT → (OPTION, FEEDBACK) × 4`
 - exactly one starred answer, matching the source key
@@ -111,11 +130,93 @@ It also checks the package: `[Content_Types].xml`, rels, no dangling `comments.x
 
 ---
 
+## Course-content import
+
+The second pipeline. Same source outline, different Coursera importer: instead of quiz
+questions it produces the **course structure** — modules, lessons, and the video / reading /
+discussion / lab / assignment items inside them — as one `.xlsx`.
+
+```
+<course>-parse-course.js   .docx  ->  course.json   modules, lessons, items, durations
+course-import-build.js     json   ->  1 x .xlsx     Coursera Course Template, FOR IMPORT filled
+course-import-verify.js    .xlsx  ->  pass/fail     re-reads the OUTPUT
+```
+
+```bash
+node src/cstp-course-1-parse-course.js > work/cstp-course-1/course.json
+node src/course-import-build.js  cstp-course-1
+node src/course-import-verify.js cstp-course-1
+```
+
+One builder serves every course — the parsers already normalise to a single `course.json`
+shape, so unlike the quiz side there is nothing course-specific left to vary.
+
+### Why the template is cloned, not authored
+
+The workbook is not written from scratch. Coursera's Course Template carries an item-type
+dropdown driven by a hidden **Ranges** sheet, a `[h]:mm:ss` duration format, and `***` / `**`
+markers the importer keys on. The builder regenerates the **FOR IMPORT** sheet from the
+template's *own* rows, substituting values and keeping every style id, so all of that
+survives. The other three sheets are untouched.
+
+Two template parts are dropped on the way through: conditional formatting (it only reddened
+placeholder strings that no longer exist) and the sheet's cell notes (anchored to template row
+numbers, so after re-layout they would point at unrelated cells).
+
+### Mapping decisions
+
+Outlines describe items in their own vocabulary. The parsers normalise:
+
+| Outline label | Coursera item type |
+|---|---|
+| `Intro Video`, `Video N`, `Promo video` | Video |
+| `Reading` | Reading |
+| `DPQ` | Discussion Prompt |
+| `Hands-on-lab` | Ungraded Lab |
+| `Role Play` | Ungraded Plugin |
+| `Graded Quiz` | Assignment |
+| `Course-end Project` | Peer Review |
+
+Every target above is valid under **both** the Private and the Public offering type, so the
+choice in `B23` cannot invalidate an import. The verifier re-checks each item against the
+allow-list the Ranges sheet publishes for whichever type is actually selected.
+
+Video format maps to the three the template's dropdown offers: `Talking Head` → *Talking
+head*, `Demo` / `Screenshare` → *Screen capture*, `Conceptual` / `Slides` → *Slide voiceover*.
+
+Durations collapse a range to its midpoint (`5-7 mins` → 6). A blank cell takes a per-parser
+default and **always** emits a warning — never silently.
+
+### Structural rules
+
+| Rule | Why |
+|---|---|
+| Lesson numbering restarts at 1 in each module, and the name repeats it (`Lesson 2: Know your audience`) | Coursera shows the lesson *name* in the outline; the number column is reference only. Enforced by the verifier. |
+| Course-level intro items are prepended to module 1, lesson 1 | Coursera has nowhere to hang an item that belongs to no lesson. |
+| Supplementary items become a final extra lesson on the last module | Keeps the outline's own module count and its "modules are independent" rationale intact. |
+| Item descriptions carry the full brief | A Discussion Prompt's description *becomes* the prompt; a lab's becomes the instructions. Newlines survive via a wrapping cell style added at build time. |
+
+### What the import does not carry
+
+It creates the outline and triggers uploads where a public link exists. It does **not** import
+question content — IVQs and graded-quiz questions are authored in Coursera afterwards, or
+loaded through the quiz pipeline above.
+
+### Module learning objectives
+
+Parsers emit only what the outline states: the module's aligned course-level objective. Most
+outlines carry nothing finer. Richer per-lesson objectives are a normal manual edit to
+`course.json` between the parse and build steps — that is what the intermediate JSON is for.
+
+---
+
 ## Shared libraries
 
 | File | Purpose |
 |---|---|
-| `lib-zipwriter.js` | Minimal OPC/zip writer (`[Content_Types].xml` forced first). Avoids a zip binary dependency. |
+| `lib-zipwriter.js` | Minimal OPC/zip writer (`[Content_Types].xml` forced first). Avoids a zip binary dependency. Used by both pipelines. |
+| `lib-xlsx.js` | SpreadsheetML plumbing for the course-content builder: shared-string append, a row splitter, and a cell rewriter that clones a template row and preserves its style id. |
+| `lib-outline-course.js` | Outline block reader plus the item-type, video-format and duration rules shared by every `*-parse-course.js`. |
 | `lib-lines.js` | Paragraph extractor that splits on `<w:br/>` — several sources put options on break-separated lines inside one paragraph. |
 | `lib-lines-strikeaware.js` | As above, but **drops struck-through runs**. Two sources mark superseded wording with `<w:strike w:val="1"/>` while keeping the replacement inline. |
 | `tool-extract-formatted.js` | Debug dump with bold/colour/style annotations — first thing to run against an unfamiliar source. |
@@ -140,11 +241,23 @@ Quirks each parser exists to absorb.
 | **genai-appdev** | Struck-through text throughout; answer key given *only* by a `(Correct)` marker. |
 | **management-mastery** | Struck draft wording; one question carries two complete option sets. |
 
+### Course-content parser notes
+
+Only the two courses below have a `*-parse-course.js` so far. Their sources differ enough to
+show what a third will need.
+
+| Course | Source shape |
+|---|---|
+| **genai-marketing** | Headings carry the name inline (`Module 2: AI-Powered Content Marketing`, `Lesson 1: MultiModal Content Generation`). Descriptions follow a bare `Description:` label on the next paragraph. Every duration is stated. |
+| **cstp-course-1** | Headings are bare (`Module 1`, `Lesson 1`) with the name on a following `Title of the Module:` line. One document holds four courses, so capture runs from `Course 1` to `Course 2`. Role Play rows and one Reading leave Est. Time empty — each raises a warning and takes a default. Module 2 leaves the aligned-objective value blank and puts `C1LO2 - …` on the next line; Module 3 writes it as a bullet. DPQ rows have no title and prefix each question `DPQ 1:` / `DPQ 2:`. |
+
 ### Recurring outline trap
 
 Most outlines end with a *Supplementary Items* table containing a "Course Wrap-up Video".
 Parsed naively it overwrites the last real video of the last lesson (`M4L3V1`). Every outline
-parser resets module/lesson scope at that heading and refuses duplicate keys.
+parser resets module/lesson scope at that heading and refuses duplicate keys. The
+course-content parsers use the same heading to *start* collecting wrap-up items instead, and
+emit them as a final lesson.
 
 ---
 
