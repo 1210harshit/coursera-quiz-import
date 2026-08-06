@@ -1,0 +1,18 @@
+# Client course content — never commit.
+# Source .docx files, their unzipped contents, parsed JSON and generated documents.
+work/
+dist/
+*.docx
+*.doc
+*.pdf
+*.xlsx
+
+# Parsed intermediates
+quiz.json
+outline.json
+*.lines.txt
+*.clean.txt
+
+node_modules/
+.DS_Store
+Thumbs.db
