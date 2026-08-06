@@ -7,6 +7,11 @@ dist/
 *.pdf
 *.xlsx
 
+# Exception: Coursera's own blank Course Template is a build dependency, not course content.
+# Checked for personal metadata before committing — no docProps, empty comment authors, empty
+# threaded-comment person list.
+!templates/*.xlsx
+
 # Parsed intermediates
 quiz.json
 outline.json

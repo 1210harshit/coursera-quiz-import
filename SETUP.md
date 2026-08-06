@@ -34,9 +34,10 @@ Scripts read and write under `work/`, which is **git-ignored** — course docume
 ```
 coursera-quiz-import/
   src/                      the scripts (in git)
+  templates/                Coursera's blank Course Template (in git)
   work/                     your data (ignored)
     tmpl/                   Coursera's Assignment Import Template, unzipped   <- quiz pipeline
-    tmpl-course/            Coursera's Course Template, unzipped              <- course pipeline
+    tmpl-course/            optional: a different Course Template, unzipped   <- overrides templates/
     <course-slug>/
       quiz/                 graded assessment .docx, unzipped
       outline/              course outline .docx, unzipped
@@ -66,16 +67,19 @@ mkdir -p work/tmpl && unzip -q "Coursera Assignment Import Template.docx" -d wor
 
 `work/tmpl/word/document.xml` must exist. Without it every quiz build fails immediately.
 
-**Course-content pipeline** — the **Course Template** (`.xlsx`), linked from *Edit Content* →
-*Import*:
+**Course-content pipeline** — nothing to do. A blank copy of Coursera's **Course Template** is
+committed at `templates/coursera-course-template.xlsx`, and the builder unzips it itself.
+
+To try a different or newer template, unzip yours into `work/tmpl-course/` — the builder
+prefers it over the committed copy whenever
+`work/tmpl-course/xl/worksheets/sheet3.xml` exists, and says so on stderr:
 
 ```bash
 mkdir -p work/tmpl-course && unzip -q "Coursera Course Template.xlsx" -d work/tmpl-course
 ```
 
-`work/tmpl-course/xl/worksheets/sheet3.xml` is the **FOR IMPORT** sheet and must exist. Do not
-substitute a re-saved copy from Excel unless you have checked that the *Ranges* sheet and the
-sheet-3 data validations survived — the builder reads both.
+Sheet 3 is **FOR IMPORT**. Do not substitute a re-saved copy from Excel unless you have checked
+that the *Ranges* sheet and the sheet-3 data validations survived — the builder reads both.
 
 ---
 
@@ -282,7 +286,8 @@ about the wording.
 | Message | Cause |
 |---|---|
 | `ENOENT … work/tmpl/word/document.xml` | Assignment template not unzipped — see 3a. |
-| `ENOENT … work/tmpl-course/xl/…/sheet3.xml` | Course template not unzipped — see 3a. |
+| `no course template: expected templates/…` | `templates/coursera-course-template.xlsx` was deleted. Restore it from git, or unzip your own into `work/tmpl-course/`. |
+| `template has no xl/worksheets/sheet3.xml` | The template in `work/tmpl-course/` is not the Course Template, or was unzipped one level too deep. |
 | `ENOENT … work/<slug>/quiz/word/document.xml` | Source `.docx` not unzipped, or wrong slug. |
 | `Cannot find module … quiz.json` | Run the parse stages before build. |
 | `item type "X" is not offered under "Public"` | `offeringType` in `course.json` disagrees with the item types used. Both are legal — pick one. |

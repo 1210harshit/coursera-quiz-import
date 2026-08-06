@@ -153,6 +153,11 @@ node src/course-import-verify.js cstp-course-1
 One builder serves every course — the parsers already normalise to a single `course.json`
 shape, so unlike the quiz side there is nothing course-specific left to vary.
 
+The Course Template ships with the repo at `templates/coursera-course-template.xlsx`, so this
+pipeline needs no download — it is Coursera's blank template, carrying no course content and
+no personal metadata (no `docProps`, empty comment authors, empty threaded-comment person
+list). Unzip a different one into `work/tmpl-course/` to override it.
+
 ### Why the template is cloned, not authored
 
 The workbook is not written from scratch. Coursera's Course Template carries an item-type

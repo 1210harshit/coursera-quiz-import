@@ -10,6 +10,7 @@
 // [h]:mm:ss duration format survive untouched. The three other sheets are left alone.
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const { SharedStrings, addCellStyle, openSheet, emitRow, countStringCells, copyDir } = require('./lib-xlsx');
 const { zipDir } = require('./lib-zipwriter');
 
@@ -17,7 +18,12 @@ const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const slug = process.argv[2];
 if (!slug) { console.error('usage: course-import-build.js <slug> [outDir]'); process.exit(2); }
 
-const TMPL = path.join(SP, 'tmpl-course');
+// Template source. An unzipped work/tmpl-course/ wins when present — that is how you try a
+// newer template without touching the repo. Otherwise the blank copy committed under
+// templates/ is unzipped straight into the staging directory, so a fresh clone builds with
+// nothing to download.
+const TMPL_DIR = path.join(SP, 'tmpl-course');
+const TMPL_XLSX = path.join(__dirname, '..', 'templates', 'coursera-course-template.xlsx');
 const course = JSON.parse(fs.readFileSync(path.join(SP, slug, 'course.json'), 'utf8'));
 const outDir = process.argv[3] || path.join(SP, slug, 'dist');
 
@@ -50,9 +56,23 @@ const RANGES_LAST_TEMPLATE_ROW = 14;
 const RANGES_CLONE_ROW = 4;                   // first row with every column populated
 
 // --- stage a copy of the template ------------------------------------------------------
-fs.rmSync(path.join(SP, slug, '.stage'), { recursive: true, force: true });
 const stage = path.join(SP, slug, '.stage');
-copyDir(TMPL, stage);
+fs.rmSync(stage, { recursive: true, force: true });
+
+if (fs.existsSync(path.join(TMPL_DIR, 'xl', 'worksheets', 'sheet3.xml'))) {
+  copyDir(TMPL_DIR, stage);
+  console.error(`using the unzipped template at ${path.relative(process.cwd(), TMPL_DIR)}`);
+} else if (fs.existsSync(TMPL_XLSX)) {
+  fs.mkdirSync(stage, { recursive: true });
+  execFileSync('unzip', ['-q', '-o', TMPL_XLSX, '-d', stage]);
+} else {
+  console.error(`no course template: expected ${TMPL_XLSX} or an unzipped copy at ${TMPL_DIR}`);
+  process.exit(1);
+}
+if (!fs.existsSync(path.join(stage, 'xl', 'worksheets', 'sheet3.xml'))) {
+  console.error('template has no xl/worksheets/sheet3.xml — that sheet is "FOR IMPORT"');
+  process.exit(1);
+}
 
 const sst = new SharedStrings(stage);
 // The template's description cells do not wrap, which makes a 2,000-character role-play
