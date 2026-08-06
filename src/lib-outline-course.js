@@ -11,10 +11,21 @@ const dec = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g
                   .replace(/&apos;/g, "'").replace(/&amp;/g, '&');
 const clean = s => s.replace(/ /g, ' ').replace(/[ \t]+/g, ' ').trim();
 
+// A run whose own properties carry <w:strike/> is superseded draft wording. Sources keep it
+// inline next to the replacement, so reading it would splice both into one sentence.
+// <w:rPrChange> holds the *previous* formatting under tracked changes and is stripped first,
+// otherwise an old strike that has since been removed would read as current.
+function isStruck(run) {
+  const r = run.replace(/<w:rPrChange[\s\S]*?<\/w:rPrChange>/g, '');
+  const props = r.split(/<w:t[\s>]/)[0];                   // properties always precede text
+  return /<w:strike(?:\s+w:val="(?:1|true|on)")?\s*\/>/.test(props);
+}
+
 function paraText(p) {
   // <w:br/> separates lines inside one paragraph in several sources; keep them as newlines
   // so multi-question DPQ cells and role-play briefs survive as written.
   let s = p.replace(/<w:br\s*\/>/g, '\n').replace(/<w:tab\s*\/>/g, ' ');
+  s = s.replace(/<w:r\b[^>]*>[\s\S]*?<\/w:r>/g, run => (isStruck(run) ? '' : run));
   return [...s.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)].map(m => dec(m[1])).join('');
 }
 
