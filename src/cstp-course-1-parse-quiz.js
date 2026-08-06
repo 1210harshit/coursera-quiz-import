@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 const { lines: rawLines } = require('./lib-lines-strikeaware');
 
-const SP = __dirname;
+const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const LET = ['A', 'B', 'C', 'D'];
 
 // Some questions put every option — or every incorrect explanation — on ONE line.

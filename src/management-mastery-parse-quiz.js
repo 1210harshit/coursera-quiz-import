@@ -14,7 +14,7 @@
 const path = require('path');
 const { lines: rawLines } = require('./lib-lines-strikeaware');
 
-const SP = __dirname;
+const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const src = rawLines(path.join(SP, 'management-mastery', 'quiz', 'word', 'document.xml')).map(s => s.trim());
 
 const HEAD = /^M\s*(\d+)\s*,\s*L\s*(\d+)\s*,\s*V\s*(\d+)\s*(?:[–—-]\s*(.*))?$/i;

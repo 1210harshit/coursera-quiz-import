@@ -71,10 +71,10 @@ Three stages per course, plus shared libraries.
 Run order:
 
 ```bash
-node src/osha-parse-outline.js            > work/osha/outline.json
-node src/osha-parse-quiz.js               > work/osha/quiz.json
-node src/osha-build.js   work/osha/dist
-node src/osha-verify.js  work/osha/dist
+node src/genai-retail-parse-outline.js > work/genai-retail/outline.json
+node src/genai-retail-parse-quiz.js    > work/genai-retail/quiz.json
+node src/genai-retail-build.js  work/genai-retail/dist
+node src/genai-retail-verify.js work/genai-retail/dist
 ```
 
 Parsers accept `--report` to print question counts and warnings instead of JSON — the normal
@@ -82,9 +82,15 @@ way to iterate on a new source document until warnings reach zero.
 
 ### Working directory
 
-Scripts read from `work/<course-slug>/`, expecting the source `.docx` files unzipped into
-`work/<course-slug>/quiz/` and `work/<course-slug>/outline/`. Those directories hold client
-course content and are git-ignored.
+Scripts read and write under `work/`, which is git-ignored so course documents are never
+committed. Each course lives in `work/<course-slug>/` with the source `.docx` files unzipped
+into `quiz/` and `outline/`. Coursera's Assignment Import Template must be unzipped once into
+`work/tmpl/` — every builder clones it for styles and hyperlink relationships.
+
+Override the root with the `QUIZ_WORK` environment variable.
+
+**See [SETUP.md](SETUP.md)** for installation, the full run-through, how to onboard a new
+course, and troubleshooting.
 
 ---
 

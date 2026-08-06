@@ -18,7 +18,7 @@
 const path = require('path');
 const { lines: rawLines } = require('./lib-lines-strikeaware');
 
-const SP = __dirname;
+const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const src = rawLines(path.join(SP, 'pm-course-2', 'quiz', 'word', 'document.xml'));
 
 const debullet = s => s.replace(/^[·••●▪*]\s*/, '').trim();

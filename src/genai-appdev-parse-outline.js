@@ -1,6 +1,8 @@
 const fs = require('fs');
+const path = require('path');
+const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 
-const xml = fs.readFileSync(require('path').join(__dirname,'genai-appdev','outline','word','document.xml'), 'utf8');
+const xml = fs.readFileSync(path.join(SP, 'genai-appdev','outline','word','document.xml'), 'utf8');
 const dec = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
                   .replace(/&quot;/g, '"').replace(/&apos;/g, "'");
 const clean = s => s.replace(/ /g, ' ').replace(/\s+/g, ' ').trim();

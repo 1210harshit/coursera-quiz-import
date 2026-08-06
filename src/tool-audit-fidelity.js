@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const SP = __dirname;
+const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const dec = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
                   .replace(/&apos;/g, "'").replace(/&amp;/g, '&');
 

@@ -2,12 +2,12 @@ const fs = require('fs');
 const path = require('path');
 const { zipDir } = require('./lib-zipwriter');
 
-const SP = __dirname;
+const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const TMPL = path.join(SP, 'tmpl');
 const OUT = process.argv[2];
-const mods = JSON.parse(fs.readFileSync(path.join(SP, 'quiz.json'), 'utf8'));
+const mods = JSON.parse(fs.readFileSync(path.join(SP, 'osha', 'quiz.json'), 'utf8'));
 const { map: VIDEOS, meta: MMETA, course: COURSE } =
-  JSON.parse(fs.readFileSync(path.join(SP, 'outline.json'), 'utf8'));
+  JSON.parse(fs.readFileSync(path.join(SP, 'osha', 'outline.json'), 'utf8'));
 
 const FONT = 'Source Sans Pro';
 const GREY = '706f6f';

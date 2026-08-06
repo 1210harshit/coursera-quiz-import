@@ -18,7 +18,7 @@
 const path = require('path');
 const { lines: rawLines } = require('./lib-lines-strikeaware');
 
-const SP = __dirname;
+const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const src = rawLines(path.join(SP, 'genai-appdev', 'quiz', 'word', 'document.xml'));
 
 // Four questions carry no "LxVy" line in the source. Their subject matter identifies a

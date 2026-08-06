@@ -16,7 +16,7 @@
 const path = require('path');
 const { lines: rawLines } = require('./lib-lines');
 
-const SP = __dirname;
+const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const src = rawLines(path.join(SP, 'genai-marketing-explanations', 'quiz', 'word', 'document.xml'));
 
 const isSep = s => /^[-–—_]{10,}$/.test(s.replace(/\s/g, ''));

@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const SP = __dirname;
+const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const OUT = process.argv[2];
 const mods = JSON.parse(fs.readFileSync(path.join(SP, 'genai-marketing-explanations', 'quiz.json'), 'utf8'));
 const { map: VIDEOS } = JSON.parse(fs.readFileSync(path.join(SP, 'genai-marketing', 'outline.json'), 'utf8'));
