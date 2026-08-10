@@ -122,15 +122,16 @@ The `.docx` files in `work/genai-retail/dist/` are what you upload — one per m
 
 `osha` · `genai-marketing` · `genai-marketing-explanations` · `genai-retail` ·
 `genai-appdev` · `management-mastery` · `pm-course-1` · `pm-course-2` · `pm-course-3` ·
-`cstp-course-1` · `google-ads` · `paid-social`
+`cstp-course-1` · `google-ads` · `paid-social` · `paid-ads-11`
 
 ### One ordering rule
 
-`google-ads` and `paid-social` both read `outline.json` inside their quiz parser — `google-ads`
-to resolve a mapping stated as a video **title** (`Source video: …`) rather than as an
-`M<x>L<y>V<z>` code, `paid-social` to check the title it writes beside each code against the
-outline's own. Run the outline parser first — the order the run-through above already uses. If
-you skip it you get:
+`google-ads`, `paid-social` and `paid-ads-11` all read `outline.json` inside their quiz parser
+— `google-ads` to resolve a mapping stated as a video **title** (`Source video: …`) rather than
+as an `M<x>L<y>V<z>` code, `paid-social` to check the title it writes beside each code against
+the outline's own, and `paid-ads-11` to do the same and then follow the title when the two
+disagree. Run the outline parser first — the order the run-through above already uses. If you
+skip it you get:
 
 ```
 ENOENT work/google-ads/outline.json
@@ -183,7 +184,7 @@ public link.
 ### Slugs with a course-content parser
 
 `genai-marketing` · `cstp-course-1` · `management-mastery` · `ai-toolkit` · `google-ads` ·
-`paid-social`
+`paid-social` · `paid-ads-11`
 
 ### One exception
 
@@ -260,6 +261,24 @@ grep -c '<w:br'    work/<slug>/quiz/word/document.xml   # line breaks inside par
 | Feedback rows carrying no letter, belonging to the option above | `paid-social` |
 | Answer key stated after the question, not inside it | `paid-social` |
 | Explanations opening `(Correct)` / `(Incorrect)` | `paid-social` |
+| Mapping, key and prompt all inside the question's own table | `paid-ads-11` |
+| A mapping stated twice, as a code and as a title | `paid-ads-11` |
+
+### When a source states its mapping twice
+
+`paid-ads-11` is the case to read before trusting any mapping. Its codes and its titles
+disagree on 17 of 110 questions, and the codes are the stale side — they were written against
+an earlier numbering of the same outline. The rule its `resolve()` applies, in order:
+
+1. code and title agree → use the code;
+2. exactly one video with that title **inside the question's own module** → use it, and report
+   that the code was overruled;
+3. only out-of-module matches → use the first, and report it loudly: a question with no video
+   in its own module is a content gap, not a mapping to repair;
+4. title unknown → keep the code and report.
+
+Never let step 3 pass silently. Modules that share generic video names (`Search Terms`,
+`Keyword Match Types`) will otherwise pull questions into the wrong module without a trace.
 
 Point its `SP` paths at your slug, adjust the anchor and label regexes, and iterate with
 `--report`. Then copy the matching `-build.js` and `-verify.js`, updating the two data paths
