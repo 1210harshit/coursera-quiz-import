@@ -122,11 +122,17 @@ The `.docx` files in `work/genai-retail/dist/` are what you upload — one per m
 
 `osha` · `genai-marketing` · `genai-marketing-explanations` · `genai-retail` ·
 `genai-appdev` · `management-mastery` · `pm-course-1` · `pm-course-2` · `pm-course-3` ·
-`cstp-course-1` · `google-ads` · `paid-social` · `paid-ads-11`
+`cstp-course-1` · `google-ads` · `google-ads-final` · `paid-social` · `paid-ads-11`
+
+`google-ads-final` is the rewritten assessment for the same course as `google-ads`, against the
+same outline. It supersedes it: per-option explanations rather than one shared across four, a
+spread answer key, a Bloom's level per question, and no duplicated question. Build from
+`google-ads-final` unless you specifically need the earlier draft. The course-content `.xlsx`
+is shared — the outline document is byte-identical, so there is nothing to rebuild.
 
 ### One ordering rule
 
-`google-ads`, `paid-social` and `paid-ads-11` all read `outline.json` inside their quiz parser
+`google-ads`, `google-ads-final`, `paid-social` and `paid-ads-11` all read `outline.json` inside their quiz parser
 — `google-ads` to resolve a mapping stated as a video **title** (`Source video: …`) rather than
 as an `M<x>L<y>V<z>` code, `paid-social` to check the title it writes beside each code against
 the outline's own, and `paid-ads-11` to do the same and then follow the title when the two
@@ -255,6 +261,9 @@ grep -c '<w:br'    work/<slug>/quiz/word/document.xml   # line breaks inside par
 | `Q1` + `Module Title:` / `Video:` metadata lines | `pm-course-2` |
 | Mapping in the question header (`M1, L1, V1 – Title`) | `management-mastery` |
 | One file per module | `cstp-course-1` |
+| `Module N` / `Question N` headings, options as `A.` | `google-ads-final` |
+| A scenario and its question in one `<w:br/>`-separated paragraph | `google-ads-final` |
+| The verdict stated as a paragraph label, not inline | `google-ads-final` |
 | One table per question, labels in column 1 | `google-ads` |
 | Mapping stated as a video title, not a code | `google-ads` |
 | A single explanation per question, not one per option | `google-ads` |
