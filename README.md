@@ -113,6 +113,7 @@ course, and troubleshooting.
 `course-import-verify.js` re-opens the generated `.xlsx` and asserts:
 
 - module and lesson counts match `course.json`, and every `***Name` is filled
+- no item name is under 5 characters, the length at which Coursera silently drops the row
 - lesson numbering restarts at 1 per module and the name matches its position
 - every item type is offered under the selected course offering type, read live from the
   **Ranges** sheet — not from a list hard-coded here
@@ -222,6 +223,7 @@ default and **always** emits a warning — never silently.
 | Course-level intro items are prepended to module 1, lesson 1 | Coursera has nowhere to hang an item that belongs to no lesson. |
 | Supplementary items become a final extra lesson on the last module | Keeps the outline's own module count and its "modules are independent" rationale intact. |
 | Item descriptions carry the full brief | A Discussion Prompt's description *becomes* the prompt; a lab's becomes the instructions. Newlines survive via a wrapping cell style added at build time. |
+| Item names are at least **5 characters** | Coursera answers a shorter one with `Item name is too short in cell B<n>` and **drops that row** — the rest of the upload succeeds, so the loss is easy to miss. `course-import-build.js` refuses to write one; the verifier re-checks the sheet. Outlines do produce them: `paid-ads-11` names a Meta Business Suite video just `Help`. |
 
 ### What the import does not carry
 

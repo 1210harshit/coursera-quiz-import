@@ -331,6 +331,8 @@ about the wording.
 | `template has no xl/worksheets/sheet3.xml` | The template in `work/tmpl-course/` is not the Course Template, or was unzipped one level too deep. |
 | `ENOENT … work/<slug>/quiz/word/document.xml` | Source `.docx` not unzipped, or wrong slug. |
 | `Cannot find module … quiz.json` | Run the parse stages before build. |
+| `N item name(s) shorter than 5 characters` | The build refuses to write a name Coursera would drop. Lengthen it in the outline, add a `NAME_FIXUPS` entry to the parser, or edit `course.json`. |
+| Coursera returns `Item name is too short in cell B<n>` | An older workbook, built before that check existed. Rebuild it. Coursera keeps the rest of the upload and silently drops the named rows, so check the item count afterwards. |
 | `item type "X" is not offered under "Public"` | `offeringType` in `course.json` disagrees with the item types used. Both are legal — pick one. |
 | `WARN item types absent from the template's Ranges sheet` | Expected for `Roleplay`. The builder appends them and widens the dropdown. Only act on it if the name is a typo. |
 | `item type "X" is not inside the dropdown range` | The Ranges sheet was extended but the validation range was not, or vice versa. Rebuild rather than hand-patching. |

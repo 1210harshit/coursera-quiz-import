@@ -140,12 +140,17 @@ check(itemRows.length === jsonItems.length,
 const VIDEO_TYPES = new Set(['Talking head', 'Slide voiceover', 'Screen capture']);
 let sheetMinutes = 0, sheetIvq = 0;
 const MIN = 1440;
+const MIN_ITEM_NAME = 5;                     // must match course-import-build.js
 
 itemRows.forEach((n, i) => {
   const c = rows[n];
   const src = jsonItems[i];
   check(allowed.has(c.A), `row ${n}: item type "${c.A}" is not offered under "${offering}"`);
   check(!!c.B && !PLACEHOLDERS.includes(c.B), `row ${n}: item name empty or placeholder`);
+  // Coursera answers a name under five characters with "Item name is too short in cell B<n>"
+  // and drops that row. The builder refuses to write one; this catches a hand-edited sheet.
+  check((c.B || '').trim().length >= MIN_ITEM_NAME,
+    `row ${n}: item name "${c.B}" is ${(c.B || '').trim().length} characters — Coursera requires at least ${MIN_ITEM_NAME}`);
   for (const col of ['B', 'C', 'E', 'F', 'I']) {
     if (c[col] && PLACEHOLDERS.includes(c[col])) fail.push(`row ${n}: column ${col} still holds template placeholder text`);
   }

@@ -43,6 +43,38 @@ const MIN_PER_DAY = 1440;                     // Excel stores the duration as a 
 const days = m => m / MIN_PER_DAY;
 const LONG_DESC = 400;                        // role plays and project briefs; cap the row height
 
+// Coursera rejects an item whose name is under five characters, one row at a time, with:
+//
+//   Video item in cell A206 failed to be processed. Error reason: Item name is too short in
+//   cell B206.
+//
+// Found the hard way on paid-ads-11, where an outline names a Meta Business Suite video just
+// "Help". Four characters fail; the same sheet's "Rules" at five imports fine. The whole
+// upload is not rejected — the offending items are simply dropped, which is worse, so this is
+// a hard failure at build time rather than a warning.
+const MIN_ITEM_NAME = 5;
+
+{
+  const short = [];
+  for (const m of course.modules) {
+    for (const l of m.lessons) {
+      for (const i of l.items) {
+        if ((i.name || '').trim().length < MIN_ITEM_NAME) {
+          short.push(`  module ${m.number} · ${l.name} · ${i.type} "${i.name}" (${(i.name || '').trim().length} chars)`
+            + (i.ref ? `  [${i.ref}]` : ''));
+        }
+      }
+    }
+  }
+  if (short.length) {
+    console.error(`${short.length} item name(s) shorter than ${MIN_ITEM_NAME} characters — `
+      + 'Coursera drops these rows on import:\n' + short.join('\n')
+      + '\n\nGive each a fuller name in the outline, in the parser\'s NAME_FIXUPS, or directly in '
+      + `${path.join(SP, slug, 'course.json')}, then rebuild.`);
+    process.exit(1);
+  }
+}
+
 // Coursera keeps adding item types; the bundled Course Template's "Ranges" sheet is a
 // snapshot from when it was published. Any type a course uses that the sheet does not list is
 // appended to it at build time (rows 15+ of columns B-F), and the item-type dropdown is

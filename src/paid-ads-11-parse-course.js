@@ -24,6 +24,20 @@ const blocks = readBlocks(path.join(SP, SLUG, 'outline', 'word', 'document.xml')
 
 const warnings = [];
 const WRAPUP_LESSON = 'Course Wrap-Up and Final Assessment';
+
+// Coursera drops any item whose name is under five characters ("Item name is too short in cell
+// B206"), so a name that short has to be lengthened before the build. Keyed by
+// "M<module>L<lesson>V<video>" rather than by the bare name, because the same word may be a
+// perfectly good name elsewhere. Each rename keeps the outline's own word and adds only the
+// context the surrounding videos already establish — no invention.
+//
+// M2L3V14 sits in "Business Manager, tools, certification, and Meta Ads + ChatGPT" between
+// "Live Dashboard", "Meta AI Business Assistant" and "Ad account Updates" — the sections of
+// Meta Business Suite. The video is the Help section of that product.
+const NAME_FIXUPS = {
+  M2L3V14: { from: 'Help', to: 'Meta Business Suite Help' },
+};
+const MIN_ITEM_NAME = 5;                      // must match course-import-build.js
 const DPQ_PLACEHOLDER = /^\d+\s+open[-\s]ended questions?\.?$/i;
 
 const course = { title: '', description: '', offeringType: 'Private', sme: '', modules: [] };
@@ -178,6 +192,20 @@ for (const b of blocks) {
       name = /^promo/i.test(label) ? 'Promo Video' : label;
       warnings.push(`${where} ${label}: no Learning Item Title in source, named "${name}"`);
     }
+
+    // Names too short for Coursera, corrected by outline position. See NAME_FIXUPS above.
+    const vnum = (label.match(/^Video\s*(\d+)$/i) || [])[1];
+    const vkey = (section === null && mod && les && vnum) ? `M${mod.number}L${les.number}V${vnum}` : null;
+    const fixup = vkey && NAME_FIXUPS[vkey];
+    if (fixup && name === fixup.from) {
+      warnings.push(`${where} ${label}: "${fixup.from}" is under the ${MIN_ITEM_NAME}-character minimum `
+        + `Coursera enforces on item names — renamed to "${fixup.to}"`);
+      name = fixup.to;
+    } else if (fixup) {
+      warnings.push(`${where} ${label}: NAME_FIXUPS has an entry for ${vkey} expecting "${fixup.from}", `
+        + `but the outline now says "${name}" — not applied. Check whether the entry is still needed.`);
+    }
+
     if (!desc) warnings.push(`${where} ${label} "${name}": no description in source`);
 
     const instructional = type === 'Video' && /^video\s*\d+/i.test(label) && section === null;
@@ -228,6 +256,21 @@ for (const m of course.modules) {
   if (!m.name) warnings.push(`Module ${m.number}: no "Title of the Module" line`);
   if (!m.description) warnings.push(`Module ${m.number}: no description`);
   for (const l of m.lessons) if (!l.name) warnings.push(`Module ${m.number} Lesson ${l.number}: no title line`);
+}
+
+// Any name still under the minimum after NAME_FIXUPS. The builder refuses to write one, so
+// this is here to surface it in --report rather than at the build, where it is less obvious
+// which outline row is at fault.
+for (const m of course.modules) {
+  for (const l of m.lessons) {
+    for (const i of l.items) {
+      if ((i.name || '').trim().length < MIN_ITEM_NAME) {
+        warnings.push(`${i.ref || `Module ${m.number}`}: item name "${i.name}" is `
+          + `${(i.name || '').trim().length} characters — Coursera requires ${MIN_ITEM_NAME} and drops `
+          + 'shorter rows. Add a NAME_FIXUPS entry or lengthen it in the outline.');
+      }
+    }
+  }
 }
 
 // Part 1's stated totals against what Part 2's tables actually contain. A mismatch is a
