@@ -122,7 +122,19 @@ The `.docx` files in `work/genai-retail/dist/` are what you upload — one per m
 
 `osha` · `genai-marketing` · `genai-marketing-explanations` · `genai-retail` ·
 `genai-appdev` · `management-mastery` · `pm-course-1` · `pm-course-2` · `pm-course-3` ·
-`cstp-course-1`
+`cstp-course-1` · `google-ads`
+
+### One ordering rule
+
+`google-ads` maps each question to a video **title** (`Source video: …`) rather than to an
+`M<x>L<y>V<z>` code, so its quiz parser reads `outline.json` to resolve them. Run the outline
+parser first — the order the run-through above already uses. If you skip it you get:
+
+```
+ENOENT work/google-ads/outline.json
+This quiz states its mapping as a video title, so the outline must be parsed first:
+  node src/google-ads-parse-outline.js > work/google-ads/outline.json
+```
 
 ---
 
@@ -168,7 +180,7 @@ public link.
 
 ### Slugs with a course-content parser
 
-`genai-marketing` · `cstp-course-1` · `management-mastery` · `ai-toolkit`
+`genai-marketing` · `cstp-course-1` · `management-mastery` · `ai-toolkit` · `google-ads`
 
 ### One exception
 
@@ -239,6 +251,9 @@ grep -c '<w:br'    work/<slug>/quiz/word/document.xml   # line breaks inside par
 | `Q1` + `Module Title:` / `Video:` metadata lines | `pm-course-2` |
 | Mapping in the question header (`M1, L1, V1 – Title`) | `management-mastery` |
 | One file per module | `cstp-course-1` |
+| One table per question, labels in column 1 | `google-ads` |
+| Mapping stated as a video title, not a code | `google-ads` |
+| A single explanation per question, not one per option | `google-ads` |
 
 Point its `SP` paths at your slug, adjust the anchor and label regexes, and iterate with
 `--report`. Then copy the matching `-build.js` and `-verify.js`, updating the two data paths
@@ -254,6 +269,7 @@ serve every course. Copy whichever existing `*-parse-course.js` matches the head
 | `Module N: Name` / `Lesson N: Name` headings | `genai-marketing` |
 | Bare `Module N` + `Title of the Module:` on the next line | `cstp-course-1` |
 | One document holding several courses | `cstp-course-1` (it stops at the next `Course N`) |
+| Bare headings, `Description: ` labels, aligned objective as a bare `LO4` | `ai-toolkit` or `google-ads` |
 
 The item mapping, duration rules and block reader come from `lib-outline-course.js`, so a new
 parser is usually just the heading regexes plus its own defaults for whatever the source
