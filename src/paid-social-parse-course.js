@@ -1,17 +1,18 @@
-// Google Ads for Performance Marketers — outline .docx -> course.json for the
+// Paid Advertising Across 9 Social Media Platforms — outline .docx -> course.json for the
 // course-content importer.
 //
-// The same source shape as ai-toolkit: bare "Module N" / "Lesson N" headings with the name on
-// a following "Title of the Module:" line, video descriptions prefixed with a literal
-// "Description: " label, "Aligned Learning Objective: LO4" stating only the id, and a Lead
-// Instructor still set to the template placeholder. Its own quirks on top of that:
+// The same source shape as ai-toolkit and google-ads: bare "Module N" / "Lesson N" headings
+// with the name on a following "Title of the Module:" line, video descriptions prefixed with a
+// literal "Description: " label, "Aligned Learning Objective: LO4" stating only the id, and a
+// Lead Instructor still set to the template placeholder. Notes on this one:
 //
+//   * the most complete of the three — the Course-end Project and Promo video rows both carry
+//     a title and a description, so neither fallback below fires
 //   * Reading rows are labelled "Reading (1)" and priced "5 mins each" — the count is in the
 //     label, so "each" multiplies by the count in the label rather than by a description count
-//   * the Course-end Project row has no title, no description and no video format; only its
-//     duration and a purpose note in the link column are filled in
-//   * the Promo video row has a format but no title
 //   * durations are written "<=4 mins" and "<=2 mins" on the two course-level videos
+//   * Part 1's "Proof of Learning" claims 234 IVQs where the tables hold 233. The check at the
+//     bottom of this file is what found that; the tables are taken as authoritative
 //
 // Part 1 also carries a tool-application table ("Field" / "Tool Name" / …). It is ignored
 // because isItemHeader only accepts a table whose first cell is "Learning Items".
@@ -21,7 +22,7 @@ const {
 } = require('./lib-outline-course');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
-const SLUG = 'google-ads';
+const SLUG = 'paid-social';
 const blocks = readBlocks(path.join(SP, SLUG, 'outline', 'word', 'document.xml'));
 
 const warnings = [];

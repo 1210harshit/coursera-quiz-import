@@ -86,10 +86,11 @@ node src/genai-retail-verify.js work/genai-retail/dist
 Parsers accept `--report` to print question counts and warnings instead of JSON — the normal
 way to iterate on a new source document until warnings reach zero.
 
-The two parse stages are independent for every course but one: `google-ads` states its mapping
-as a video *title* rather than an `M<x>L<y>V<z>` code, so `google-ads-parse-quiz.js` resolves
-titles through `outline.json` and must run after `google-ads-parse-outline.js`. It says so and
-exits if that file is missing.
+The two parse stages are independent for most courses. Two read `outline.json` from the quiz
+parser and so must run after the outline stage — each says so and exits if the file is missing:
+`google-ads`, which states its mapping as a video *title* rather than an `M<x>L<y>V<z>` code and
+has to resolve it, and `paid-social`, which states a code but writes the title beside it and
+checks the two agree.
 
 ### Working directory
 
@@ -265,7 +266,8 @@ Quirks each parser exists to absorb.
 | **genai-appdev** | Struck-through text throughout; answer key given *only* by a `(Correct)` marker. |
 | **ai-toolkit** | Bare headings as `cstp-course-1`. DPQ rows put the questions in the *Title* column and the placeholder in the description — inverted from every other source. Video descriptions carry a literal `Description: ` label. Aligned objectives state only an id (`LO4`), resolved against Part 1. Lead Instructor is still the template placeholder, so Writer/SME is left blank. Part 1 also holds tool-application tables, ignored because their header cell is not "Learning Items". |
 | **management-mastery** | Struck draft wording; one question carries two complete option sets. |
-| **google-ads** | The only **table-based** quiz: one `<w:tbl>` per question with `Q.` / `A.`–`D.` / `Correct` / `Feedback` rows. Mapping is a **video title** (`Source video: …`), not a code, so the parser resolves titles through the outline's index — the outline must be parsed first. One explanation per question rather than one per option. Questions numbered 1–80 straight through, renumbered per module. An 81st table repeats question 40 verbatim after question 80. One `Source video` title drops a plural. Question 40 references a video taught in module 8 while sitting in module 4's set. |
+| **google-ads** | The first **table-based** quiz: one `<w:tbl>` per question with `Q.` / `A.`–`D.` / `Correct` / `Feedback` rows. Mapping is a **video title** (`Source video: …`), not a code, so the parser resolves titles through the outline's index — the outline must be parsed first. One explanation per question rather than one per option. Questions numbered 1–80 straight through, renumbered per module. An 81st table repeats question 40 verbatim after question 80. One `Source video` title drops a plural. Question 40 references a video taught in module 8 while sitting in module 4's set. |
+| **paid-social** | Table-based like `google-ads` but a different table: the `Feedback` row carries no letter and belongs to the option above it. The answer key (`✅ Correct Answer: B`) arrives **after** its table, so a question only closes when that line is read. Every explanation opens with a literal `(Correct)` / `(Incorrect)` marker, stripped by the builder. Mapping is a code (`Mapped to: M1L1V8 - Title`), and five of the titles written beside those codes are truncated at an `&` — the reference line takes the outline's wording. Questions numbered 1–90 straight through. |
 
 ### Course-content parser notes
 
@@ -278,6 +280,7 @@ show what a third will need.
 | **management-mastery** | Same bare headings as `cstp-course-1`, single course. `Course Title;` uses a semicolon. Aligned objectives state their own text inline and alternate `LO1:` / `LO2 -`. Two Readings per third lesson. DPQ rows carry no title and no questions, only the placeholder "2 open-ended questions". The Module 3 Role Play and the Promo video have no title. Superseded role-play wording is struck through inline. |
 | **cstp-course-1** | Headings are bare (`Module 1`, `Lesson 1`) with the name on a following `Title of the Module:` line. One document holds four courses, so capture runs from `Course 1` to `Course 2`. Role Play rows and one Reading leave Est. Time empty — each raises a warning and takes a default. Module 2 leaves the aligned-objective value blank and puts `C1LO2 - …` on the next line; Module 3 writes it as a bullet. DPQ rows have no title and prefix each question `DPQ 1:` / `DPQ 2:`. |
 | **google-ads** | As `ai-toolkit` — bare headings, `Description: ` labels, aligned objectives as bare ids, placeholder Lead Instructor. Its own quirks: Reading rows are labelled `Reading (1)` and priced `5 mins each`, so the count comes from the label; the Course-end Project row states only a duration and a purpose note in the *link* column, which becomes its description; the Promo video row has a format but no title; the two course-level videos are priced `<=4 mins` and `<=2 mins`. |
+| **paid-social** | The same template as `google-ads`, and the most completely filled in of the three — every supplementary row carries a title and a description. Its one defect is a count: Part 1 claims 234 IVQs where Part 2's tables hold 233. Both parsers now check Part 1's "Proof of Learning" numbers against the tables and name any disagreement. |
 
 ### Recurring outline trap
 

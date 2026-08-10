@@ -122,13 +122,15 @@ The `.docx` files in `work/genai-retail/dist/` are what you upload — one per m
 
 `osha` · `genai-marketing` · `genai-marketing-explanations` · `genai-retail` ·
 `genai-appdev` · `management-mastery` · `pm-course-1` · `pm-course-2` · `pm-course-3` ·
-`cstp-course-1` · `google-ads`
+`cstp-course-1` · `google-ads` · `paid-social`
 
 ### One ordering rule
 
-`google-ads` maps each question to a video **title** (`Source video: …`) rather than to an
-`M<x>L<y>V<z>` code, so its quiz parser reads `outline.json` to resolve them. Run the outline
-parser first — the order the run-through above already uses. If you skip it you get:
+`google-ads` and `paid-social` both read `outline.json` inside their quiz parser — `google-ads`
+to resolve a mapping stated as a video **title** (`Source video: …`) rather than as an
+`M<x>L<y>V<z>` code, `paid-social` to check the title it writes beside each code against the
+outline's own. Run the outline parser first — the order the run-through above already uses. If
+you skip it you get:
 
 ```
 ENOENT work/google-ads/outline.json
@@ -180,7 +182,8 @@ public link.
 
 ### Slugs with a course-content parser
 
-`genai-marketing` · `cstp-course-1` · `management-mastery` · `ai-toolkit` · `google-ads`
+`genai-marketing` · `cstp-course-1` · `management-mastery` · `ai-toolkit` · `google-ads` ·
+`paid-social`
 
 ### One exception
 
@@ -254,6 +257,9 @@ grep -c '<w:br'    work/<slug>/quiz/word/document.xml   # line breaks inside par
 | One table per question, labels in column 1 | `google-ads` |
 | Mapping stated as a video title, not a code | `google-ads` |
 | A single explanation per question, not one per option | `google-ads` |
+| Feedback rows carrying no letter, belonging to the option above | `paid-social` |
+| Answer key stated after the question, not inside it | `paid-social` |
+| Explanations opening `(Correct)` / `(Incorrect)` | `paid-social` |
 
 Point its `SP` paths at your slug, adjust the anchor and label regexes, and iterate with
 `--report`. Then copy the matching `-build.js` and `-verify.js`, updating the two data paths
