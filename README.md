@@ -298,6 +298,7 @@ Quirks each parser exists to absorb.
 | **google-ads-final** | The rewritten assessment for the same course and the same outline as `google-ads`, so it takes a second slug the way `genai-marketing-explanations` does beside `genai-marketing`. Paragraph-based: `Module N` / `Question N` headings, `Mapped to: M1L1V1 \| Bloom's Level: Remember`, and the verdict stated as a paragraph *label* (`Correct Explanation:` / `Incorrect Explanation:`) rather than inline. 48 prompts are scenario-framed, with the scenario and the question in one paragraph separated by `<w:br/>`; `lib-lines.js` splits on the break and **each half stays its own line**, becoming its own paragraph in the built document. The first Google Ads source to record a Bloom's level. |
 | **ai-toolkit-v2** | The v2 assessment for the course whose v1 outline `ai-toolkit-parse-course.js` reads; it is the first to give that course a quiz pipeline at all. Table-based, closest to `paid-social` — `Mapped to:` above the table, letterless `Feedback` rows belonging to the option above, `(Correct)` / `(Incorrect)` markers — with the key moved **inside the question cell** as its second paragraph, which makes each table self-contained. The cleanest source in the repository: 80 questions, zero warnings. |
 | **digital-marketing** | Byte-for-byte the same shape as `ai-toolkit-v2`, so its parser is that one with the slug changed. 80 questions, zero warnings. Its answer key leans away from D (A:27 B:25 C:21 **D:7**), which shuffle hides from learners but is worth an author's eye. |
+| **websites-15** | Table shape as `shopify`, including the `(Correct)` marker being the only statement of the key. What is new is that it **admits what it does not know**: an opening SOURCING NOTICE says captions existed for only 64 of the course's 308 videos, so 28 questions come from transcripts and 122 are `[DRAFT - no transcript]`, written from titles alone. The two groups carry different source lines and map to different levels — a video title for the 28, a lesson for the 122 — so the builder writes `(Refer to M3L1: <lesson>)` for the latter rather than guessing a video. Every DRAFT question is flagged in its document's working area. Answer key is only ever A or B. See "When a source states a lesson, not a video" below. |
 | **shopify** | In the `ai-toolkit-v2` family, with one thing no other source does: there is **no answer-key line at all** — not after the table, not inside the question cell, nowhere. The key exists only as the `(Correct)` marker on one of the four explanations, so here that marker *is* the key rather than a second opinion about it, and a question with none or with two is a hard failure. Only `genai-appdev` does the same. Its mapping is the dotted video number in a `Source video: 1.1.2 - Title` line; the titles themselves contain hyphens, so only the first separator delimits. Answer key is B on 38 of 40. |
 | **paid-ads-11** | The tidiest table: everything a question needs is inside it, including the mapping and the key, so nothing is carried across blocks. Module headings use a colon. `(Correct)` / `(Incorrect)` markers as `paid-social`. Its one real defect is **stale mapping codes**: on 17 of 110 questions the code disagrees with the video title stated beside it, and the prompt is always about the *title's* video — the codes were written against an earlier numbering. `resolve()` therefore prefers the title, and prefers an in-module match over an out-of-module one, because modules 1 and 3 share generic video names. Four module 3 questions have no in-module video at all and are reported as a content gap. |
 
@@ -317,6 +318,31 @@ show what a third will need.
 | **ai-toolkit-v2** | The v2 outline for the same course as `ai-toolkit`, now on the shared template. Part 1 writes each objective as `LO1 (125 chars): …` — an authoring note between the id and the colon, skipped rather than captured. Four objectives serve eight modules, so several share one; nothing assumes a 1:1 mapping. Every Proof-of-Learning count matches the tables. |
 | **shopify** | **Not the Starweaver template at all** — a design document, and the first outline here that needed a course parser written from nothing. Modules are single-cell banner tables (`MODULE 1 OF 4  \|  LO1` / name / `Learner goal:`), lessons are `Lesson 1.1 — Name  (Section 1)` paragraphs, and each lesson carries a `# \| Video Title \| Description` table plus a `Type \| Activity \| Duration` one. It has no `Learning Items` table, no per-item duration column, and no Lead Instructor line. It also introduces the **Quiz** item type (Coursera's ungraded practice quiz), appended to the Ranges lookup at build time exactly as `Roleplay` is. See "A source off the template" below. |
 | **digital-marketing** | The shared template again, and the largest course here: 572 instructional videos over 24 lessons, 45h 26m. Two gaps the parsers report rather than paper over — Module 7 has no `Intro Video` row where every other module does, and it carries two lessons where the rest carry three. It also repeats the `Help` video name that broke the `paid-ads-11` import, at `M2L3V15`; the same `NAME_FIXUPS` treatment applies. |
+
+### When a source states a lesson, not a video
+
+Every course before `websites-15` maps each question to one video. That one cannot: caption
+files existed for 64 of its 308 videos, so 122 of its 150 questions were written from the
+outline's titles rather than from a transcript, and the document says so in its first
+paragraph. It marks them `[DRAFT - no transcript]` and gives them a lesson-level source line
+(`Source: Module 3, Lesson 3.1 - …`) where the other 28 name a video (`Source video: …`).
+
+The reference line follows the source's own precision rather than exceeding it:
+
+```
+Feedback: … (Refer to M1L1V3: Wordpress Installation)                  <- from a transcript
+Feedback: … (Refer to M15L1: Pagecloud foundations and editor)         <- from titles only
+```
+
+Picking some video inside the lesson would put a *specific, wrong* pointer in front of a
+learner — the question was never written from that video. Naming the lesson is exactly what the
+source supports and still sends the learner to the right place. `referLine()` in the builder
+and its mirror in the verifier accept both forms, and the verifier checks that the level in the
+line is the level `quiz.json` recorded, so a lesson mapping cannot silently become a video one.
+
+The DRAFT status is carried into each generated document: the working area opens with a count
+and an explanation, and every row is marked `DRAFT — verify` or `From transcript`. Nobody
+should publish 122 unverified questions without seeing that they are unverified.
 
 ### A source off the template
 

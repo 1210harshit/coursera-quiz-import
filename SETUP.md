@@ -123,7 +123,7 @@ The `.docx` files in `work/genai-retail/dist/` are what you upload — one per m
 `osha` · `genai-marketing` · `genai-marketing-explanations` · `genai-retail` ·
 `genai-appdev` · `management-mastery` · `pm-course-1` · `pm-course-2` · `pm-course-3` ·
 `cstp-course-1` · `google-ads` · `google-ads-final` · `paid-social` · `paid-ads-11` ·
-`ai-toolkit-v2` · `digital-marketing` · `shopify`
+`ai-toolkit-v2` · `digital-marketing` · `shopify` · `websites-15`
 
 `google-ads-final` is the rewritten assessment for the same course as `google-ads`, against the
 same outline. It supersedes it: per-option explanations rather than one shared across four, a
@@ -136,9 +136,10 @@ is shared — the outline document is byte-identical, so there is nothing to reb
 Every quiz parser from `google-ads` onward reads `outline.json` — `google-ads` to resolve a
 mapping stated as a video **title** (`Source video: …`) rather than as an `M<x>L<y>V<z>` code;
 `paid-social`, `google-ads-final`, `ai-toolkit-v2`, `digital-marketing` and `shopify` to check
-the title written beside each code against the outline's own; and `paid-ads-11` to do the same
-and then follow the title when the two disagree. Run the outline parser first — the order the
-run-through above already uses. If you skip it you get:
+the title written beside each code against the outline's own; `paid-ads-11` to do the same and
+then follow the title when the two disagree; and `websites-15` to resolve both a video title
+and a lesson number, since 122 of its 150 questions name only a lesson. Run the outline parser
+first — the order the run-through above already uses. If you skip it you get:
 
 ```
 ENOENT work/google-ads/outline.json
@@ -191,7 +192,7 @@ public link.
 ### Slugs with a course-content parser
 
 `genai-marketing` · `cstp-course-1` · `management-mastery` · `ai-toolkit` · `google-ads` ·
-`paid-social` · `paid-ads-11` · `ai-toolkit-v2` · `digital-marketing` · `shopify`
+`paid-social` · `paid-ads-11` · `ai-toolkit-v2` · `digital-marketing` · `shopify` · `websites-15`
 
 `ai-toolkit-v2` is the v2 outline of the course `ai-toolkit` reads at v1. Build from
 `ai-toolkit-v2`; the older parser is kept only for the v1 document.
