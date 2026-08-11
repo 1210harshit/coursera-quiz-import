@@ -60,6 +60,29 @@ Feedback: <explanation> (Refer to M1L1V1: <video title>)
 | Keep the reference inside the `Feedback:` paragraph | A free-standing `Refer to …` paragraph is an unmatched line and rejects the question. |
 | Prompt length is **not** a limit | Coursera's own reference prompt runs ~800 characters. |
 
+### Text fidelity
+
+Source text reaches the import section **verbatim, in source order**. Only leading and trailing
+whitespace is removed — a run of spaces inside a line is the author's and survives. Where a
+source puts text on separate lines, whether as separate paragraphs or as `<w:br/>` inside one,
+those stay separate lines and become separate paragraphs; the builder holds them apart with
+paragraph spacing rather than an empty paragraph, since a blank line inside a prompt can
+terminate it for the importer.
+
+Exactly two things are removed on the way through, both deliberate:
+
+| Removed | Why |
+|---|---|
+| A leading `Scenario:` label on the first prompt line | Not cosmetic. A line beginning `Word:` is read by the importer as an **answer option**, which rejected every scenario question on `osha`. Without this the question does not import. |
+| A leading `(Correct)` / `(Incorrect)` marker, or a `Correct Explanation:` / `Incorrect Explanation:` label, on an explanation | Coursera already shows the learner whether their option was right, so the marker only repeats the interface — and beside an option the learner did not pick, on a shuffled quiz, it reads as wrong. |
+
+Labels the parsers consume as metadata — the option letter, the running question number, the
+`Mapped to:` and `Bloom's Level:` lines — are not text; they are structure, and they reappear
+as the document's own `Question N` headers and `*A:` markers.
+
+`tool-audit-fidelity.js` re-reads a built document against its source and reports anything
+else that differs.
+
 ---
 
 ## Quiz import pipeline
@@ -272,7 +295,7 @@ Quirks each parser exists to absorb.
 | **management-mastery** | Struck draft wording; one question carries two complete option sets. |
 | **google-ads** | The first **table-based** quiz: one `<w:tbl>` per question with `Q.` / `A.`–`D.` / `Correct` / `Feedback` rows. Mapping is a **video title** (`Source video: …`), not a code, so the parser resolves titles through the outline's index — the outline must be parsed first. One explanation per question rather than one per option. Questions numbered 1–80 straight through, renumbered per module. An 81st table repeats question 40 verbatim after question 80. One `Source video` title drops a plural. Question 40 references a video taught in module 8 while sitting in module 4's set. |
 | **paid-social** | Table-based like `google-ads` but a different table: the `Feedback` row carries no letter and belongs to the option above it. The answer key (`✅ Correct Answer: B`) arrives **after** its table, so a question only closes when that line is read. Every explanation opens with a literal `(Correct)` / `(Incorrect)` marker, stripped by the builder. Mapping is a code (`Mapped to: M1L1V8 - Title`), and five of the titles written beside those codes are truncated at an `&` — the reference line takes the outline's wording. Questions numbered 1–90 straight through. |
-| **google-ads-final** | The rewritten assessment for the same course and the same outline as `google-ads`, so it takes a second slug the way `genai-marketing-explanations` does beside `genai-marketing`. Paragraph-based: `Module N` / `Question N` headings, `Mapped to: M1L1V1 \| Bloom's Level: Remember`, and the verdict stated as a paragraph *label* (`Correct Explanation:` / `Incorrect Explanation:`) rather than inline. 48 prompts are scenario-framed, with the scenario and the question in one paragraph separated by `<w:br/>` — split by `lib-lines.js` and re-joined into the single line the importer needs, with the `Scenario:` label dropped. The first Google Ads source to record a Bloom's level. |
+| **google-ads-final** | The rewritten assessment for the same course and the same outline as `google-ads`, so it takes a second slug the way `genai-marketing-explanations` does beside `genai-marketing`. Paragraph-based: `Module N` / `Question N` headings, `Mapped to: M1L1V1 \| Bloom's Level: Remember`, and the verdict stated as a paragraph *label* (`Correct Explanation:` / `Incorrect Explanation:`) rather than inline. 48 prompts are scenario-framed, with the scenario and the question in one paragraph separated by `<w:br/>`; `lib-lines.js` splits on the break and **each half stays its own line**, becoming its own paragraph in the built document. The first Google Ads source to record a Bloom's level. |
 | **paid-ads-11** | The tidiest table: everything a question needs is inside it, including the mapping and the key, so nothing is carried across blocks. Module headings use a colon. `(Correct)` / `(Incorrect)` markers as `paid-social`. Its one real defect is **stale mapping codes**: on 17 of 110 questions the code disagrees with the video title stated beside it, and the prompt is always about the *title's* video — the codes were written against an earlier numbering. `resolve()` therefore prefers the title, and prefers an in-module match over an out-of-module one, because modules 1 and 3 share generic video names. Four module 3 questions have no in-module video at all and are reported as a content gap. |
 
 ### Course-content parser notes

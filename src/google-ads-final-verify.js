@@ -214,12 +214,14 @@ for (const mo of mods) {
       }
     });
 
-    // Prompt keeps the source's paragraph split; only the "Scenario:" label is dropped.
+    // Prompt keeps the source's line split, one paragraph per source line, in source order.
+    // Compared EXACTLY — no whitespace collapsing on either side, unlike the other courses'
+    // verifiers — so a run of spaces the author wrote has to survive into the document.
     const firstOpt = blk.findIndex(l => /^\*?[A-D]:\s/.test(l));
-    const gotPrompt = blk.slice(1, firstOpt).map(p => p.replace(/\s+/g, ' ').trim());
+    const gotPrompt = blk.slice(1, firstOpt);
     const wantParas = (Array.isArray(src.prompt) ? src.prompt : [src.prompt])
-      .map((l, i) => (i === 0 ? l.replace(/^\s*Scenario\s*:\s*/i, '') : l).replace(/\s+/g, ' ').trim())
-      .filter(Boolean);
+      .map((l, i) => (i === 0 ? l.replace(/^\s*Scenario\s*:\s*/i, '') : l))
+      .filter(l => l.trim());
     if (gotPrompt.length !== wantParas.length)
       bad(`${tag} prompt has ${gotPrompt.length} paragraphs, source has ${wantParas.length}`);
     if (gotPrompt.some(p => p.includes('\n')))

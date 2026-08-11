@@ -24,11 +24,16 @@
 //
 //   * a prompt line beginning "Word:" is read as an ANSWER OPTION, which is what made every
 //     scenario question fail on the osha course. The label is dropped by the builder, which
-//     already does this for every course; quiz.json keeps the source wording.
-//   * the prompt must be a single line. The scenario and the question sit in one paragraph
-//     separated by <w:br/>, so lib-lines.js splits them and they are re-joined here with a
-//     single space. Length is not a constraint — Coursera's own reference prompt runs ~800
-//     characters.
+//     already does this for every course; quiz.json keeps the source wording. This is the ONE
+//     place the built document departs from the source text, and it is not optional.
+//   * the scenario and the question sit in one paragraph separated by <w:br/>. lib-lines.js
+//     splits on the break and both halves are KEPT AS SEPARATE LINES, each becoming its own
+//     paragraph in the built document — the source's line structure is the author's, not
+//     noise to flatten. The builder separates them with paragraph spacing rather than an empty
+//     paragraph, because a blank line inside a prompt can terminate it for the importer.
+//
+// Text is otherwise passed through verbatim. Only leading and trailing whitespace is removed,
+// which the verifier requires; runs of spaces inside a line are the author's and survive.
 const fs = require('fs');
 const path = require('path');
 const { lines } = require('./lib-lines');
@@ -47,7 +52,13 @@ const { map: VIDEOS, meta: MMETA } = JSON.parse(fs.readFileSync(outlinePath, 'ut
 
 const raw = lines(path.join(SP, SLUG, 'quiz', 'word', 'document.xml'));
 
+// For metadata — mapping codes, titles, Bloom's levels — where collapsing is harmless.
 const clean = s => String(s).replace(/ /g, ' ').replace(/[ \t]+/g, ' ').trim();
+
+// For content — prompts, options, explanations. Trims the ends, which the verifier requires,
+// and converts a non-breaking space to an ordinary one so it cannot survive into an import
+// line. Everything else, including runs of spaces inside the text, is left exactly as written.
+const verbatim = s => String(s).replace(/ /g, ' ').replace(/^\s+|\s+$/g, '');
 const norm = s => clean(s)
   .replace(/[‘’]/g, "'").replace(/[“”]/g, '"')
   .replace(/[–—]/g, '-')
@@ -65,16 +76,19 @@ function pushQ() {
   if (!cur) { warn.push(`question ${q.sourceNum} before any module heading — dropped`); q = null; return; }
 
   // The scenario and the question arrive as separate lines because <w:br/> separates them
-  // inside one paragraph. One line is what the importer accepts, so they are re-joined.
-  const parts = q._prompt.map(clean).filter(Boolean);
-  q.prompt = parts.join(' ');
+  // inside one paragraph. That split is the author's, so it is kept: each line becomes its own
+  // paragraph in the built document, in source order. A single-line prompt stays a plain
+  // string so the JSON reads the way every other course's does.
+  const parts = q._prompt.map(verbatim).filter(Boolean);
+  q.prompt = parts.length === 1 ? parts[0] : parts;
   q.hasScenario = /^\s*Scenario\s*:/i.test(parts[0] || '');
   delete q._prompt;
 
   q.num = cur.questions.length + 1;
   const where = `M${cur.num} Q${q.num}`;
 
-  if (!q.prompt) warn.push(`${where}: no prompt`);
+  const promptLines = Array.isArray(q.prompt) ? q.prompt : [q.prompt];
+  if (!promptLines.filter(Boolean).length) warn.push(`${where}: no prompt`);
   if (q.sourceNum !== null && q.sourceNum !== q.num) {
     warn.push(`${where}: document numbers it Question ${q.sourceNum} but it sits at position ${q.num}`);
   }
@@ -108,13 +122,15 @@ function pushQ() {
     }
   }
 
-  // The builder drops a leading "Scenario:" label; anything else of that shape would still be
-  // read by the importer as an answer option.
-  const afterLabel = q.prompt.replace(/^\s*Scenario\s*:\s*/i, '');
-  if (/^[A-Za-z][A-Za-z ]{0,24}:\s/.test(afterLabel)) {
-    warn.push(`${where}: prompt still starts with a label-like token after the Scenario label is `
-      + `dropped: "${afterLabel.slice(0, 40)}"`);
-  }
+  // The builder drops a leading "Scenario:" label from the FIRST line only; a label-like token
+  // anywhere else, or on a later line, would still be read by the importer as an answer option.
+  promptLines.forEach((line, i) => {
+    const text = i === 0 ? line.replace(/^\s*Scenario\s*:\s*/i, '') : line;
+    if (/^[A-Za-z][A-Za-z ]{0,24}:\s/.test(text)) {
+      warn.push(`${where}: prompt line ${i + 1} starts with a label-like token, which the importer `
+        + `reads as an answer option: "${text.slice(0, 40)}"`);
+    }
+  });
 
   cur.questions.push(q);
   q = null;
@@ -158,14 +174,14 @@ for (const line of raw) {
   if ((m = line.match(/^(Correct|Incorrect) Explanation\s*:\s*([\s\S]*)$/i))) {
     if (!lastLetter) { warn.push(`M${cur ? cur.num : '?'} Q${q.sourceNum}: an explanation precedes its option`); continue; }
     if (q.feedback[lastLetter]) warn.push(`M${cur ? cur.num : '?'} Q${q.sourceNum}: two explanations for option ${lastLetter}`);
-    q.feedback[lastLetter] = clean(m[2]);
+    q.feedback[lastLetter] = verbatim(m[2]);
     if (/^correct$/i.test(m[1])) q.correctExplFor = lastLetter;
     mode = 'fb';
     continue;
   }
 
   if ((m = line.match(/^([A-D])\.\s+([\s\S]*)$/))) {
-    q.options.push({ letter: m[1], text: clean(m[2]) });
+    q.options.push({ letter: m[1], text: verbatim(m[2]) });
     lastLetter = m[1];
     mode = 'opts';
     continue;
@@ -176,10 +192,10 @@ for (const line of raw) {
   if (mode === 'head') { q._prompt.push(line); continue; }
   if (mode === 'opts' && lastLetter) {
     const o = q.options.find(x => x.letter === lastLetter);
-    if (o) { o.text += ' ' + clean(line); continue; }
+    if (o) { o.text += ' ' + verbatim(line); continue; }
   }
   if (mode === 'fb' && lastLetter && q.feedback[lastLetter]) {
-    q.feedback[lastLetter] += ' ' + clean(line);
+    q.feedback[lastLetter] += ' ' + verbatim(line);
     continue;
   }
   warn.push(`M${cur ? cur.num : '?'} Q${q.sourceNum}: unplaced line "${line.slice(0, 50)}"`);
@@ -203,7 +219,10 @@ if (process.argv.includes('--report')) {
   for (const x of all) { byLetter[x.correct] = (byLetter[x.correct] || 0) + 1; byBloom[x.bloom] = (byBloom[x.bloom] || 0) + 1; }
   console.log('answer key spread: ' + spread(byLetter));
   console.log("Bloom's levels:    " + spread(byBloom));
-  console.log('longest prompt:    ' + Math.max(...all.map(x => x.prompt.length)) + ' characters');
+  const promptOf = x => (Array.isArray(x.prompt) ? x.prompt : [x.prompt]);
+  console.log('prompt lines:      ' + all.filter(x => promptOf(x).length > 1).length
+    + ' questions keep the source\'s two-line split, ' + all.filter(x => promptOf(x).length === 1).length + ' are one line');
+  console.log('longest line:      ' + Math.max(...all.flatMap(x => promptOf(x).map(l => l.length))) + ' characters');
   console.log(`\nwarnings: ${warn.length}`);
   warn.forEach(w => console.log('  ' + w));
 } else {
