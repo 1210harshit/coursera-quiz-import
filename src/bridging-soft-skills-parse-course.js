@@ -41,6 +41,16 @@ const INTRO_MODULE = 'Introduction to the Course';
 const INTRO_LESSON = 'Course Orientation and Pathway Gate';
 const WRAPUP_LESSON = 'Course Wrap-Up and Capstone Project';
 
+// Every lesson in Part 2 states three higher-order objectives; the orientation items are the
+// one part of the outline that never got them. These three are AUTHORED HERE, not parsed:
+// each is grounded in the stated description of the items it covers, and three matches the
+// outline's own pattern of three per lesson. Edit the wording freely, nothing depends on it.
+const INTRO_OBJECTIVES = [
+  'Describe how this course is organised, and locate the modules, lessons, coach dialogues, roleplays, labs and capstone that make up the soft skills teaching sequence.',
+  'Identify the twelve missing basics and the core frameworks the course teaches, using the toolkit reference as a map to return to throughout the course.',
+  'Complete the pre-course readiness diagnostic and interpret the resulting profile to choose a route through the course, deciding what to study closely and what to review lightly.',
+];
+
 const course = {
   title: '', description: '', offeringType: 'Private', sme: '', modules: [],
 };
@@ -237,12 +247,10 @@ if (intro.length) {
     number: '1',
     name: INTRO_MODULE,
     description: desc,
-    // The outline states no objectives for the orientation items. Author them here if you want
-    // them, the same way richer module objectives are a normal edit to this file.
-    objectives: [],
+    objectives: INTRO_OBJECTIVES.slice(),
     lessons: [{ number: '1', name: 'Lesson 1: ' + INTRO_LESSON, items: intro }],
   });
-  warnings.push('intro module: the outline states no objectives for it — author them in course.json if you want the Learning objectives block filled');
+  warnings.push('intro module: the outline states no objectives for it; three authored ones are supplied from INTRO_OBJECTIVES');
   warnings.push('intro items promoted to their own module; content modules are now 2-'
     + course.modules.length + ', so a quiz document saying "Module N" refers to module N+1');
 }
