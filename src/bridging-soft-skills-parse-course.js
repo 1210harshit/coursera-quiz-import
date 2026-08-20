@@ -3,8 +3,8 @@
 //
 // Source shape: Part 2 holds "Module N: Title" and "Lesson N: Title" headings with one
 // learning-items table per lesson, plus two tables outside any lesson — "Introduction to the
-// Entire Course" and "Supplementary Items for the Entire Course". Coursera has nowhere to hang
-// a course-level item, so both are folded into lessons. See PLACEMENT below.
+// Entire Course" and "Supplementary Items for the Entire Course". Neither belongs to a lesson,
+// and Coursera has no container above one, so each is placed explicitly. See PLACEMENT below.
 //
 // Two things this outline states that most do not, and which are carried through rather than
 // re-derived:
@@ -29,11 +29,16 @@ const blocks = readBlocks(path.join(SP, SLUG, 'outline', 'word', 'document.xml')
 const warnings = [];
 
 // PLACEMENT
-//   intro    -> prepended to module 1, lesson 1. The orientation table also holds the pathway
-//               gate items (diagnostic guidance, the diagnostic itself, the recommended path),
-//               which the outline places "before Module 1" — the closest Coursera equivalent.
-//   wrap-up  -> an extra final lesson on the last module, so the outline's own four-module
-//               structure survives.
+//   intro    -> its own module, first, holding all six orientation items. The other parsers in
+//               this repo prepend course-level items to module 1 lesson 1, which buries them:
+//               that lesson ended up with eleven items, the first six being the welcome video,
+//               the navigation reading, the toolkit infographic and the whole pathway gate.
+//               The outline treats these as preceding Module 1 ("Pathway Gate (before Module
+//               1)"), and a module is the only Coursera container that sits at that level.
+//               Content modules therefore shift to 2-5 and the course has five.
+//   wrap-up  -> an extra final lesson on the last module.
+const INTRO_MODULE = 'Introduction to the Course';
+const INTRO_LESSON = 'Course Orientation and Pathway Gate';
 const WRAPUP_LESSON = 'Course Wrap-Up and Capstone Project';
 
 const course = {
@@ -51,6 +56,8 @@ let objMode = false;           // inside a lesson's "Three higher-order objectiv
 
 const courseDesc = [];
 const courseLOs = [];
+const introProse = [];      // the welcome text under "Introduction to the Entire Course"
+const gateProse = [];       // the pathway-gate note that precedes it
 
 for (const b of blocks) {
   if (b.type === 'p') {
@@ -94,8 +101,9 @@ for (const b of blocks) {
     if (/^Supplementary Items/i.test(t)) {
       section = 'supplementary'; mod = les = null; objMode = false; continue;
     }
-    // Prose only; its items live in the orientation table above.
-    if (/^Pathway Gate\b/i.test(t)) { section = null; mod = les = null; objMode = false; continue; }
+    // The gate has no table of its own; its items sit in the orientation table below, and
+    // its prose explains what the diagnostic is for.
+    if (/^Pathway Gate\b/i.test(t)) { section = 'pathway'; mod = les = null; objMode = false; continue; }
 
     if ((m = t.match(/^Module\s+(\d+)\s*:\s*(.+)$/i))) {
       section = null; objMode = false;
@@ -126,6 +134,10 @@ for (const b of blocks) {
       les.objectives.push(t);
       continue;
     }
+
+    // Course-level prose, captured for the intro module's description.
+    if (section === 'intro')   { introProse.push(t); continue; }
+    if (section === 'pathway') { gateProse.push(t); continue; }
 
     if (/^Description\s*:?$/i.test(t)) continue;                  // label, value follows
     if ((m = t.match(/^Description\s*:\s*(.+)$/i))) {
@@ -180,12 +192,7 @@ for (const b of blocks) {
   }
 }
 
-// --- fold the two course-level tables into lessons -------------------------------------
-if (intro.length) {
-  const first = course.modules[0] && course.modules[0].lessons[0];
-  if (first) first.items.unshift(...intro);
-  else warnings.push('course intro items found but module 1 has no lesson to hold them');
-}
+// --- the supplementary table becomes a final lesson on the last content module ----------
 if (wrapUp.length) {
   const last = course.modules[course.modules.length - 1];
   if (last) {
@@ -203,6 +210,9 @@ if (!course.sme) warnings.push('no Lead Instructor in the outline — Writer/SME
 // Module objectives are the lessons' own higher-order objectives, which this outline states in
 // full. The aligned course-level objective is appended to the module description instead, where
 // it reads as context rather than as a seventh objective.
+//
+// This runs before the intro module is prepended: that module states neither, and reporting it
+// as missing both would be noise about a module the outline never wrote in those terms.
 for (const m of course.modules) {
   m.objectives = m.lessons.flatMap(l => l.objectives || []);
   if (!m.objectives.length) warnings.push('Module ' + m.number + ': no lesson objectives found in source');
@@ -216,5 +226,28 @@ for (const m of course.modules) {
   delete m.alignedLO;
   for (const l of m.lessons) { delete l.description; delete l.objectives; }
 }
+
+// --- the orientation table becomes the first module --------------------------------------
+// Its description is the outline's own prose: the welcome text under "Introduction to the
+// Entire Course", then the pathway-gate note that explains what the diagnostic is for.
+if (intro.length) {
+  const desc = [introProse.join(' '), gateProse.join(' ')].map(clean).filter(Boolean).join('\n\n');
+  if (!desc) warnings.push('intro module: no description prose found in the outline');
+  course.modules.unshift({
+    number: '1',
+    name: INTRO_MODULE,
+    description: desc,
+    // The outline states no objectives for the orientation items. Author them here if you want
+    // them, the same way richer module objectives are a normal edit to this file.
+    objectives: [],
+    lessons: [{ number: '1', name: 'Lesson 1: ' + INTRO_LESSON, items: intro }],
+  });
+  warnings.push('intro module: the outline states no objectives for it — author them in course.json if you want the Learning objectives block filled');
+  warnings.push('intro items promoted to their own module; content modules are now 2-'
+    + course.modules.length + ', so a quiz document saying "Module N" refers to module N+1');
+}
+// Coursera orders modules by position, so inserting at the front renumbers everything after it.
+course.modules.forEach((m, i) => { m.number = String(i + 1); });
+
 
 writeJson(course, warnings);
