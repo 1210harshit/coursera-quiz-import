@@ -43,17 +43,23 @@ const MIN_PER_DAY = 1440;                     // Excel stores the duration as a 
 const days = m => m / MIN_PER_DAY;
 const LONG_DESC = 400;                        // role plays and project briefs; cap the row height
 
-// Coursera keeps adding item types; the bundled Course Template's "Ranges" sheet is a
-// snapshot from when it was published. Any type a course uses that the sheet does not list is
-// appended to it at build time (rows 15+ of columns B-F), and the item-type dropdown is
-// widened to match — otherwise the value imports fine but the dropdown rejects it on edit and
-// the verifier, which reads that sheet, calls it invalid.
+// The item-type dropdown is driven by the "Ranges" sheet, and that list is also exactly what
+// Coursera's importer accepts.
 //
-// Appending to B, C and D asserts the type is offered under Private, Public and Your Org
-// alike. That is the safe default; narrow it here if Coursera restricts one.
+// An earlier revision appended unlisted types to that sheet so the dropdown would take them.
+// The workbook built and verified clean, and the import then rejected every one of those rows:
+//
+//     Item type Quiz is not supported
+//     ITEM_TYPE_UNSET item in cell A49 ... Invalid item type
+//
+// The importer does not read this sheet — widening it only satisfies Excel. An unlisted type is
+// therefore a build failure now, caught where it is cheap to fix, rather than a warning
+// followed by an import that reports success while silently dropping items.
+//
+// If Coursera adds a type this bundled template predates, unzip a newer Course Template into
+// work/tmpl-course/ (SETUP.md 3a) rather than widening the list here.
 const RANGES_FIRST_ROW = 3;                   // E3 is "Select an item type"
 const RANGES_LAST_TEMPLATE_ROW = 14;
-const RANGES_CLONE_ROW = 4;                   // first row with every column populated
 
 // --- stage a copy of the template ------------------------------------------------------
 const stage = path.join(SP, slug, '.stage');
@@ -94,29 +100,21 @@ const ivqTotal = allItems.filter(i => i.ivq).length;
 const typeCounts = {};
 for (const i of allItems) typeCounts[i.type] = (typeCounts[i.type] || 0) + 1;
 
-// --- extend the Ranges lookup with any item type the template predates --------------------
+// --- every item type must be one the importer accepts -------------------------------------
 const listed = [];
 for (let n = RANGES_FIRST_ROW; n <= RANGES_LAST_TEMPLATE_ROW; n++) {
   const c = (ranges.rows[n] || '').match(/<c\s+r="E\d+"[^>]*t="s"[^>]*><v>(\d+)<\/v><\/c>/);
   if (c) listed.push(sst.at(+c[1]));
 }
-const missingTypes = Object.keys(typeCounts).filter(t => !listed.includes(t));
-let rangesLastRow = RANGES_LAST_TEMPLATE_ROW;
-
-if (missingTypes.length) {
-  for (const type of missingTypes) {
-    const n = ++rangesLastRow;
-    const row = emitRow(ranges.rows[RANGES_CLONE_ROW], n, {
-      A: null,
-      B: { s: type }, C: { s: type }, D: { s: type }, E: { s: type }, F: { s: type },
-    }, sst);
-    ranges.rows[n] = row;                       // replaces the template's empty row n
-  }
-  const body = Object.keys(ranges.rows).map(Number).sort((a, b) => a - b)
-    .map(n => ranges.rows[n]).join('');
-  fs.writeFileSync(rangesFile, ranges.head + body + ranges.tail);
-  console.error(`WARN item types absent from the template's Ranges sheet, appended: `
-    + missingTypes.join(', '));
+const rangesLastRow = RANGES_LAST_TEMPLATE_ROW;
+const unsupported = Object.keys(typeCounts).filter(t => !listed.includes(t));
+if (unsupported.length) {
+  console.error('item type(s) the Coursera importer will reject: '
+    + unsupported.map(t => `${t} (${typeCounts[t]} item${typeCounts[t] === 1 ? '' : 's'})`).join(', '));
+  console.error('  accepted: ' + listed.filter(t => t !== 'Select an item type').join(', '));
+  console.error('  Remap them in lib-outline-course.js itemType(), or edit course.json.');
+  fs.rmSync(stage, { recursive: true, force: true });
+  process.exit(1);
 }
 
 // --- rows ------------------------------------------------------------------------------

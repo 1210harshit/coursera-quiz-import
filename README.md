@@ -96,6 +96,11 @@ identical, because that is what makes retrieval practice work. The verifier chec
 the time estimate and the wording per kind, so a practice quiz that claims to be graded fails the
 build rather than the review.
 
+These documents are only the questions. The *item* they are imported into comes from the
+course-content workbook, where a practice quiz is an `Assignment` — the only quiz item Coursera's
+importer creates — and therefore arrives graded. See
+[Practice quizzes arrive graded](#mapping-decisions).
+
 Run order:
 
 ```bash
@@ -130,8 +135,8 @@ course, and troubleshooting.
 - lesson numbering restarts at 1 per module and the name matches its position
 - every item type is offered under the selected course offering type, read live from the
   **Ranges** sheet — not from a list hard-coded here
-- the item-type dropdown's source range actually reaches every type the course uses, so an
-  appended type is not left outside it
+- every item type is one the **Ranges** sheet lists — that list is what the importer accepts, so
+  a type outside it fails the build instead of failing the import
 - item type, name and duration are byte-identical to `course.json`
 - module time estimates equal the sum of their own items, and the course estimate the sum of all
 - IVQ flags and video types appear only on `Video` rows, and only dropdown-legal values
@@ -206,11 +211,11 @@ Outlines describe items in their own vocabulary. The parsers normalise:
 | `Reading` | Reading | |
 | `Infographic`, `Reference Guide`, `Cheat Sheet`, `Downloadable …` | Reading | Coursera has one item type for anything read or downloaded |
 | `Pre Course Diagnostic Guidance`, `Recommended Learning Path` | Reading | pathway-gate companions; both leave the title blank, so the label becomes the item name |
-| `Practice Quiz`, `Interactive Assessment` | Quiz | ungraded and retryable; not in the bundled template, appended, see below |
+| `Practice Quiz`, `Interactive Assessment` | Assignment | the only quiz item the importer creates — **they arrive graded**, see below |
 | `DPQ` | Discussion Prompt | |
 | `Hands-on-lab` | Peer Review | graded — the labs all end in a submitted deliverable |
-| `Role Play` | Roleplay | not in the bundled template; appended, see below |
-| `Coach Dialogue` | Roleplay | an AI conversation with a coaching persona — the same item in a different costume |
+| `Role Play` | Ungraded Plugin | Coursera's AI role-play ships as a plugin, and the outlines call it ungraded applied practice |
+| `Coach Dialogue` | Ungraded Plugin | an AI conversation with a coaching persona — the same item in a different costume |
 | `Graded Quiz`, `Graded Assessment` | Assignment | |
 | `Course-end Project` | Peer Review | |
 
@@ -223,16 +228,32 @@ these outlines ends in a submitted artefact ("Submit a document containing three
 rather than an in-platform lab environment. Each one therefore needs submission instructions
 and a rubric configured in Coursera after import — an Ungraded Lab would not.
 
-**Roleplay and Quiz postdate the template.** Coursera's AI role-play item and its ungraded
-practice-quiz item are not in the Course Template's Ranges lookup, so `course-import-build.js`
-appends any such type to rows 15+ of that sheet and widens the item-type dropdown to
-`$E$3:$E$<last>` to match. Without that the value still imports, but the dropdown rejects it the
-moment anyone edits the cell. The build prints a `WARN` naming every type it had to append; the
-verifier then confirms the dropdown range actually reaches it.
+**The Ranges sheet is the importer's list, not just a dropdown.** Every value `itemType()`
+returns must appear in the Course Template's **Ranges** sheet. That list — Video, Reading,
+Discussion Prompt, Graded Discussion Prompt, Programming, Peer Review, App item, Ungraded Lab,
+Assignment, Teammate Review, Ungraded Plugin — is exactly what Coursera's importer accepts.
 
-`Quiz` is distinct from `Assignment`: the graded quiz at the end of a module is an Assignment,
-while a lesson practice quiz and a non-blocking diagnostic are Quiz items. Mapping a practice
-quiz to Assignment would put it in the course grade.
+An earlier revision mapped role plays to `Roleplay` and practice quizzes to `Quiz`, Coursera's
+own names for those items, and had the builder append them to the Ranges sheet so the dropdown
+would take them. The workbook built and verified clean. The import then returned a
+`processing_error` rejecting all seventeen rows:
+
+```
+Item type Quiz is not supported
+ITEM_TYPE_UNSET item in cell A49 ... Invalid item type
+```
+
+The importer does not read that sheet; widening it only satisfies Excel. So the build now
+**fails** on an unlisted type rather than appending it, naming the offenders and the accepted
+set. If Coursera adds a type this bundled template predates, unzip a newer Course Template into
+`work/tmpl-course/` rather than widening the list.
+
+**Practice quizzes arrive graded.** `Assignment` is the only quiz item the importer creates, so
+a practice quiz imported this way counts towards the course grade until someone changes that in
+Coursera. The alternatives were `Ungraded Plugin`, which stays ungraded but is not a quiz and so
+cannot receive the practice questions, and omitting the rows and creating those items by hand.
+That is a per-course editorial call — change the mapping, or drop the rows from `course.json`
+before building.
 
 Video format maps to the three the template's dropdown offers: `Talking Head` → *Talking
 head*, `Demo` / `Screenshare` → *Screen capture*, `Conceptual` / `Slides` → *Slide voiceover*.

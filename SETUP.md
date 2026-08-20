@@ -339,8 +339,8 @@ about the wording.
 | `ENOENT … work/<slug>/quiz/word/document.xml` | Source `.docx` not unzipped, or wrong slug. |
 | `Cannot find module … quiz.json` | Run the parse stages before build. |
 | `item type "X" is not offered under "Public"` | `offeringType` in `course.json` disagrees with the item types used. Both are legal — pick one. |
-| `WARN item types absent from the template's Ranges sheet` | Expected for `Roleplay`. The builder appends them and widens the dropdown. Only act on it if the name is a typo. |
-| `item type "X" is not inside the dropdown range` | The Ranges sheet was extended but the validation range was not, or vice versa. Rebuild rather than hand-patching. |
+| `item type(s) the Coursera importer will reject: X` | `X` is not in the template's Ranges sheet, which is exactly the importer's accepted list. Remap it in `lib-outline-course.js` `itemType()`. Do **not** add it to the Ranges sheet — the importer does not read that sheet, and the row will be rejected at import with `Item type X is not supported` or `ITEM_TYPE_UNSET`. |
+| `item type "X" is not inside the dropdown range` | The Ranges sheet was hand-edited. Rebuild rather than patching. |
 | `lesson name "…" is not "Lesson N: Title"` | A hand edit to `course.json` broke the naming convention the verifier enforces. |
 | `EBUSY` / `EPERM` on build | The target `.docx` is open in Word or WPS. Close it. |
 | `no mapping in source` | The source omits it. Supply one explicitly in the parser's `MAPPING_FALLBACK`. |

@@ -59,22 +59,38 @@ const isItemHeader = cells => /^Learning Items?$/i.test((cells[0] || '').trim())
 
 // Outline item label -> Coursera item type.
 //
+// EVERY VALUE HERE MUST BE ONE THE IMPORTER ACCEPTS. That set is exactly what the bundled
+// Course Template's "Ranges" sheet lists: Video, Reading, Discussion Prompt, Graded Discussion
+// Prompt, Programming, Peer Review, App item, Ungraded Lab, Assignment, Teammate Review,
+// Ungraded Plugin. Anything else is rejected item-by-item with a processing error, and the
+// import silently drops those rows while reporting success for the rest.
+//
+// This was learned the hard way. An earlier revision mapped role plays to "Roleplay" and
+// practice quizzes to "Quiz" — Coursera's own names for those items — and had the builder
+// append them to the Ranges lookup so the dropdown would accept them. The workbook built and
+// verified clean, then the import returned:
+//
+//     Item type Quiz is not supported
+//     ITEM_TYPE_UNSET item in cell A49 ... Invalid item type
+//
+// Widening the dropdown only satisfies Excel. The importer has its own list and does not read
+// that sheet. course-import-build.js now refuses to build an unlisted type rather than
+// appending it.
+//
 // Hands-on labs map to Peer Review, not Ungraded Lab: the labs in these outlines all end in a
 // submitted deliverable ("Submit a document containing three versions…"), which is a graded
 // peer-assessed artefact rather than an in-platform lab environment.
 //
-// Role plays map to Roleplay, Coursera's own AI role-play item. It postdates the bundled
-// Course Template, so it is absent from that workbook's Ranges lookup — the builder appends
-// any such type to the lookup at build time. See EXTRA_ITEM_TYPES in course-import-build.js.
+// Role plays and coach dialogues map to Ungraded Plugin. Coursera's AI role-play item is
+// delivered as a plugin, and both are ungraded applied practice — the outlines say so outright
+// ("run as ungraded applied practice before the graded assessment").
 //
-// Coach Dialogue is the same item in a different costume: an AI conversation the learner holds
-// with a coaching persona. Roleplay is the only Coursera item that runs a scripted dialogue, so
-// both labels land there.
-//
-// Quiz is Coursera's ungraded practice quiz, distinct from Assignment (the graded quiz). Like
-// Roleplay it postdates the bundled template and gets appended to the Ranges lookup at build
-// time. Practice Quiz and Interactive Assessment are both ungraded, retryable, and non-blocking,
-// so both map here; a graded assessment stays an Assignment.
+// Practice quizzes and interactive assessments map to Assignment, the only quiz item the
+// importer creates. NOTE THE CONSEQUENCE: they arrive GRADED and count towards the course
+// grade until someone changes that in Coursera. The alternative — Ungraded Plugin — keeps them
+// ungraded but is not a quiz, so the practice questions could not be imported into it. If you
+// would rather they were true practice quizzes, drop these rows from the workbook and create
+// the items by hand in Coursera; you already have to open each one to import its questions.
 //
 // The Reading list is deliberately broad. Coursera has one item type for anything the learner
 // reads or downloads, so an outline's infographic, cheat sheet, reference guide, diagnostic
@@ -85,12 +101,11 @@ function itemType(label) {
   if (/^(intro\s*video|video\s*(intro|outro)\b|video\s*\d*|promo\s*video)/i.test(l)) return 'Video';
   if (/^(reading|infographic|reference\s*guide|cheat\s*sheet|downloadable|recommended\s*learning\s*path|pre[-\s]?course\s*diagnostic\s*guidance)/i.test(l))
                                                              return 'Reading';
-  if (/^(practice\s*quiz|interactive\s*assessment|knowledge\s*check|ungraded\s*quiz)/i.test(l))
-                                                             return 'Quiz';
   if (/^(dpq|discussion)/i.test(l))                          return 'Discussion Prompt';
   if (/^hands[-\s]?on/i.test(l))                             return 'Peer Review';
-  if (/^(role\s*play|roleplay|coach\s*dialogue)/i.test(l))   return 'Roleplay';
-  if (/^graded\s*(quiz|assessment)/i.test(l))                return 'Assignment';
+  if (/^(role\s*play|roleplay|coach\s*dialogue)/i.test(l))   return 'Ungraded Plugin';
+  if (/^(graded\s*(quiz|assessment)|practice\s*quiz|interactive\s*assessment|knowledge\s*check|ungraded\s*quiz)/i.test(l))
+                                                             return 'Assignment';
   if (/^course[-\s]?end\s*project/i.test(l))                 return 'Peer Review';
   return null;
 }
