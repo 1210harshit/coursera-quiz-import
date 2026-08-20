@@ -66,14 +66,31 @@ const isItemHeader = cells => /^Learning Items?$/i.test((cells[0] || '').trim())
 // Role plays map to Roleplay, Coursera's own AI role-play item. It postdates the bundled
 // Course Template, so it is absent from that workbook's Ranges lookup — the builder appends
 // any such type to the lookup at build time. See EXTRA_ITEM_TYPES in course-import-build.js.
+//
+// Coach Dialogue is the same item in a different costume: an AI conversation the learner holds
+// with a coaching persona. Roleplay is the only Coursera item that runs a scripted dialogue, so
+// both labels land there.
+//
+// Quiz is Coursera's ungraded practice quiz, distinct from Assignment (the graded quiz). Like
+// Roleplay it postdates the bundled template and gets appended to the Ranges lookup at build
+// time. Practice Quiz and Interactive Assessment are both ungraded, retryable, and non-blocking,
+// so both map here; a graded assessment stays an Assignment.
+//
+// The Reading list is deliberately broad. Coursera has one item type for anything the learner
+// reads or downloads, so an outline's infographic, cheat sheet, reference guide, diagnostic
+// guidance note and recommended-path companion are all Readings once imported — the outline's
+// own label survives in the item name, which is where the distinction belongs.
 function itemType(label) {
   const l = (label || '').trim();
-  if (/^(intro\s*video|video\s*\d*|promo\s*video)/i.test(l)) return 'Video';
-  if (/^reading/i.test(l))                                   return 'Reading';
+  if (/^(intro\s*video|video\s*(intro|outro)\b|video\s*\d*|promo\s*video)/i.test(l)) return 'Video';
+  if (/^(reading|infographic|reference\s*guide|cheat\s*sheet|downloadable|recommended\s*learning\s*path|pre[-\s]?course\s*diagnostic\s*guidance)/i.test(l))
+                                                             return 'Reading';
+  if (/^(practice\s*quiz|interactive\s*assessment|knowledge\s*check|ungraded\s*quiz)/i.test(l))
+                                                             return 'Quiz';
   if (/^(dpq|discussion)/i.test(l))                          return 'Discussion Prompt';
   if (/^hands[-\s]?on/i.test(l))                             return 'Peer Review';
-  if (/^role\s*play/i.test(l))                               return 'Roleplay';
-  if (/^graded\s*quiz/i.test(l))                             return 'Assignment';
+  if (/^(role\s*play|roleplay|coach\s*dialogue)/i.test(l))   return 'Roleplay';
+  if (/^graded\s*(quiz|assessment)/i.test(l))                return 'Assignment';
   if (/^course[-\s]?end\s*project/i.test(l))                 return 'Peer Review';
   return null;
 }

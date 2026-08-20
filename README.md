@@ -5,7 +5,7 @@ accept. Two independent pipelines share this repository:
 
 | Pipeline | In | Out | Uploaded via |
 |---|---|---|---|
-| **Quiz import** | graded assessment + outline `.docx` | one **Assignment Import** `.docx` per module | **Import** on a quiz item |
+| **Quiz import** | graded and practice assessment + outline `.docx` | one **Assignment Import** `.docx` per quiz | **Import** on a quiz item |
 | **Course-content import** | course outline `.docx` | one **Course Import** `.xlsx` | **Import** in *Edit Content* |
 
 Each generated assignment document follows Coursera's Assignment Import Template: a
@@ -70,9 +70,31 @@ Three stages per course, plus shared libraries. For the course-content pipeline 
 ```
 <course>-parse-quiz.js     .docx  ->  quiz.json      questions, options, key, feedback, mapping
 <course>-parse-outline.js  .docx  ->  outline.json   M<x>L<y>V<z> -> video title, LOs, instructor
-<course>-build.js          json   ->  N x .docx      one import document per module
+<course>-build.js          json   ->  N x .docx      one import document per quiz
 <course>-verify.js         .docx  ->  pass/fail      re-reads the OUTPUT and checks it
 ```
+
+### Graded and practice quizzes
+
+A practice quiz is a quiz item whose result does not count, not a different file format: it uses
+the same Assignment Import Template and the same question grammar. Where a course ships practice
+assessments, the parser emits them alongside the graded ones and the builder writes one document
+per quiz, at whatever scope the outline places them — `bridging-soft-skills` budgets one practice
+quiz per *lesson* and one graded quiz per *module*, so four practice files split into eight
+documents.
+
+Only two things differ in the generated document, both driven by the quiz's `kind`:
+
+| | Graded | Practice |
+|---|---|---|
+| Passing Threshold | `80%` | `0%` — ungraded, gates nothing |
+| Learner-facing wording | "you need a score of 80% or higher to pass" | "ungraded, does not count towards your course grade" |
+| Learning objectives listed | the module's | that lesson's |
+
+Everything else — shuffle, unlimited attempts, full feedback, visible responses — is deliberately
+identical, because that is what makes retrieval practice work. The verifier checks the threshold,
+the time estimate and the wording per kind, so a practice quiz that claims to be graded fails the
+build rather than the review.
 
 Run order:
 
@@ -127,6 +149,10 @@ course, and troubleshooting.
 - no bold/italic/underline/strike/colour/highlight on any run
 - no stringified values (`[object Object]`, bare `undefined`) leaked into text
 - all 30 template sections present in order, and every hyperlink resolving
+- the Passing Threshold, Time Estimate and learner-facing wording match the quiz's kind, so a
+  practice quiz cannot ship with a graded pass mark
+- the learning objectives listed are the ones for that quiz's scope — the module's for a graded
+  quiz, that lesson's for a practice quiz
 
 It also checks the package: `[Content_Types].xml`, rels, no dangling `comments.xml`.
 
@@ -176,12 +202,16 @@ Outlines describe items in their own vocabulary. The parsers normalise:
 
 | Outline label | Coursera item type | |
 |---|---|---|
-| `Intro Video`, `Video N`, `Promo video` | Video | |
+| `Intro Video`, `Video N`, `Video Intro/Outro`, `Promo video` | Video | |
 | `Reading` | Reading | |
+| `Infographic`, `Reference Guide`, `Cheat Sheet`, `Downloadable …` | Reading | Coursera has one item type for anything read or downloaded |
+| `Pre Course Diagnostic Guidance`, `Recommended Learning Path` | Reading | pathway-gate companions; both leave the title blank, so the label becomes the item name |
+| `Practice Quiz`, `Interactive Assessment` | Quiz | ungraded and retryable; not in the bundled template, appended, see below |
 | `DPQ` | Discussion Prompt | |
 | `Hands-on-lab` | Peer Review | graded — the labs all end in a submitted deliverable |
 | `Role Play` | Roleplay | not in the bundled template; appended, see below |
-| `Graded Quiz` | Assignment | |
+| `Coach Dialogue` | Roleplay | an AI conversation with a coaching persona — the same item in a different costume |
+| `Graded Quiz`, `Graded Assessment` | Assignment | |
 | `Course-end Project` | Peer Review | |
 
 The verifier re-checks each item against the allow-list the Ranges sheet publishes for
@@ -193,12 +223,16 @@ these outlines ends in a submitted artefact ("Submit a document containing three
 rather than an in-platform lab environment. Each one therefore needs submission instructions
 and a rubric configured in Coursera after import — an Ungraded Lab would not.
 
-**Roleplay postdates the template.** Coursera's AI role-play item is not in the Course
-Template's Ranges lookup, so `course-import-build.js` appends any such type to rows 15+ of that
-sheet and widens the item-type dropdown to `$E$3:$E$<last>` to match. Without that the value
-still imports, but the dropdown rejects it the moment anyone edits the cell. The build prints
-a `WARN` naming every type it had to append; the verifier then confirms the dropdown range
-actually reaches it.
+**Roleplay and Quiz postdate the template.** Coursera's AI role-play item and its ungraded
+practice-quiz item are not in the Course Template's Ranges lookup, so `course-import-build.js`
+appends any such type to rows 15+ of that sheet and widens the item-type dropdown to
+`$E$3:$E$<last>` to match. Without that the value still imports, but the dropdown rejects it the
+moment anyone edits the cell. The build prints a `WARN` naming every type it had to append; the
+verifier then confirms the dropdown range actually reaches it.
+
+`Quiz` is distinct from `Assignment`: the graded quiz at the end of a module is an Assignment,
+while a lesson practice quiz and a non-blocking diagnostic are Quiz items. Mapping a practice
+quiz to Assignment would put it in the course grade.
 
 Video format maps to the three the template's dropdown offers: `Talking Head` → *Talking
 head*, `Demo` / `Screenshare` → *Screen capture*, `Conceptual` / `Slides` → *Slide voiceover*.
@@ -260,6 +294,7 @@ Quirks each parser exists to absorb.
 | **genai-appdev** | Struck-through text throughout; answer key given *only* by a `(Correct)` marker. |
 | **ai-toolkit** | Bare headings as `cstp-course-1`. DPQ rows put the questions in the *Title* column and the placeholder in the description — inverted from every other source. Video descriptions carry a literal `Description: ` label. Aligned objectives state only an id (`LO4`), resolved against Part 1. Lead Instructor is still the template placeholder, so Writer/SME is left blank. Part 1 also holds tool-application tables, ignored because their header cell is not "Learning Items". |
 | **management-mastery** | Struck draft wording; one question carries two complete option sets. |
+| **bridging-soft-skills** | Cleanest source in the repo, and the only one with practice assessments. Eight files, one grammar: `Q1. Scenario:` anchors, `A.` options, `✅ Correct Answer: B` and `Mapped to: M1L1V1` sharing a line, `Explanation for Option B (Correct):` and `Explanation for Other Options:`. Modules 2 and 3 put the options, the key, the mapping and each label's text on one `<w:br/>`-separated paragraph; modules 1 and 4 use real paragraphs. Practice files hold two lesson-scoped quizzes each and restart numbering at Q1 in every lesson. |
 
 ### Course-content parser notes
 
@@ -271,6 +306,7 @@ show what a third will need.
 | **genai-marketing** | Headings carry the name inline (`Module 2: AI-Powered Content Marketing`, `Lesson 1: MultiModal Content Generation`). Descriptions follow a bare `Description:` label on the next paragraph. Every duration is stated. |
 | **management-mastery** | Same bare headings as `cstp-course-1`, single course. `Course Title;` uses a semicolon. Aligned objectives state their own text inline and alternate `LO1:` / `LO2 -`. Two Readings per third lesson. DPQ rows carry no title and no questions, only the placeholder "2 open-ended questions". The Module 3 Role Play and the Promo video have no title. Superseded role-play wording is struck through inline. |
 | **cstp-course-1** | Headings are bare (`Module 1`, `Lesson 1`) with the name on a following `Title of the Module:` line. One document holds four courses, so capture runs from `Course 1` to `Course 2`. Role Play rows and one Reading leave Est. Time empty — each raises a warning and takes a default. Module 2 leaves the aligned-objective value blank and puts `C1LO2 - …` on the next line; Module 3 writes it as a bullet. DPQ rows have no title and prefix each question `DPQ 1:` / `DPQ 2:`. |
+| **bridging-soft-skills** | `Module N: Name` / `Lesson N: Name` headings as `genai-marketing`. States two things most outlines do not, and both are carried through rather than re-derived: every lesson lists **three higher-order objectives**, which become the module's six, and every instructional video's description ends with a literal `In-video question: …`, which is read directly instead of inferring IVQs from the label — so the intro and outro videos are not flagged. Video rows are labelled bare `Video`, so the V-number is the row's position in its lesson. The pathway-gate items sit in the orientation table and two of them leave the title blank. No `Lead Instructor:` line, so Writer/SME is left blank. |
 
 ### Recurring outline trap
 

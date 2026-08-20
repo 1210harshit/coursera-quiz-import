@@ -40,6 +40,7 @@ coursera-quiz-import/
     tmpl-course/            optional: a different Course Template, unzipped   <- overrides templates/
     <course-slug>/
       quiz/                 graded assessment .docx, unzipped
+      practice/             practice assessment .docx, unzipped (only where a course has them)
       outline/              course outline .docx, unzipped
       quiz.json             produced by parse-quiz
       outline.json          produced by parse-outline
@@ -122,7 +123,52 @@ The `.docx` files in `work/genai-retail/dist/` are what you upload — one per m
 
 `osha` · `genai-marketing` · `genai-marketing-explanations` · `genai-retail` ·
 `genai-appdev` · `management-mastery` · `pm-course-1` · `pm-course-2` · `pm-course-3` ·
-`cstp-course-1`
+`cstp-course-1` · `bridging-soft-skills`
+
+### 4a. A course with practice quizzes
+
+`bridging-soft-skills` ships four graded assessments and four practice files, one of each per
+module, so it unzips into three places rather than two. The practice files hold two lesson-scoped
+quizzes each and are split at their lesson headings.
+
+```bash
+mkdir -p work/bridging-soft-skills
+unzip -q "Bridging the Soft Skills Gap_Course Outline_Final.docx" -d work/bridging-soft-skills/outline
+```
+
+```bash
+for i in 1 2 3 4; do
+  unzip -q "BridgingTheSoftSkillsGap_GradedQuiz_Module$i.docx"   -d work/bridging-soft-skills/quiz/m$i
+  unzip -q "BridgingTheSoftSkillsGap_PracticeQuiz_Module$i.docx" -d work/bridging-soft-skills/practice/m$i
+done
+```
+
+```bash
+node src/bridging-soft-skills-parse-outline.js > work/bridging-soft-skills/outline.json
+```
+
+```bash
+node src/bridging-soft-skills-parse-quiz.js > work/bridging-soft-skills/quiz.json
+```
+
+```bash
+node src/bridging-soft-skills-build.js work/bridging-soft-skills/dist
+```
+
+```bash
+node src/bridging-soft-skills-verify.js work/bridging-soft-skills/dist
+```
+
+A clean run ends with:
+
+```
+✅ ALL CHECKS PASSED — 12 files (4 graded, 8 practice), 56 questions, 224 feedback blocks, references verified against the outline.
+```
+
+Twelve documents: `Coursera_Import_Module_<n>_Graded_Quiz_…` for each module, and
+`Coursera_Import_Module_<n>_Lesson_<l>_Practice_Quiz_…` for each lesson. Upload each via
+**Import** on the matching Coursera quiz item — the graded ones on a graded quiz, the practice
+ones on a practice quiz.
 
 ---
 
@@ -168,7 +214,7 @@ public link.
 
 ### Slugs with a course-content parser
 
-`genai-marketing` · `cstp-course-1` · `management-mastery` · `ai-toolkit`
+`genai-marketing` · `cstp-course-1` · `management-mastery` · `ai-toolkit` · `bridging-soft-skills`
 
 ### One exception
 
@@ -239,6 +285,7 @@ grep -c '<w:br'    work/<slug>/quiz/word/document.xml   # line breaks inside par
 | `Q1` + `Module Title:` / `Video:` metadata lines | `pm-course-2` |
 | Mapping in the question header (`M1, L1, V1 – Title`) | `management-mastery` |
 | One file per module | `cstp-course-1` |
+| Uniform grammar, and the course also has practice quizzes | `bridging-soft-skills` |
 
 Point its `SP` paths at your slug, adjust the anchor and label regexes, and iterate with
 `--report`. Then copy the matching `-build.js` and `-verify.js`, updating the two data paths
@@ -254,6 +301,7 @@ serve every course. Copy whichever existing `*-parse-course.js` matches the head
 | `Module N: Name` / `Lesson N: Name` headings | `genai-marketing` |
 | Bare `Module N` + `Title of the Module:` on the next line | `cstp-course-1` |
 | One document holding several courses | `cstp-course-1` (it stops at the next `Course N`) |
+| Per-lesson objectives, and `In-video question:` stated in the description | `bridging-soft-skills` |
 
 The item mapping, duration rules and block reader come from `lib-outline-course.js`, so a new
 parser is usually just the heading regexes plus its own defaults for whatever the source
@@ -296,5 +344,8 @@ about the wording.
 | `lesson name "…" is not "Lesson N: Title"` | A hand edit to `course.json` broke the naming convention the verifier enforces. |
 | `EBUSY` / `EPERM` on build | The target `.docx` is open in Word or WPS. Close it. |
 | `no mapping in source` | The source omits it. Supply one explicitly in the parser's `MAPPING_FALLBACK`. |
+| `practice lesson has no questions` | A practice file's lesson heading is followed by no `Q1.` anchor — usually a heading the parser split on that is not really a quiz section. |
+| `mapped to …, outside its own lesson` | A practice question points at a video in a different lesson. Decide whether the mapping or the placement is wrong; the builder will still emit it. |
+| `Passing Threshold is "80%", expected "0%"` | A quiz parsed as practice was built with graded settings, or the other way round. Check `kind` in `quiz.json`. |
 | `line break inside import section` | A builder edit introduced `<w:br/>`. Keep the import section break-free. |
 | `bold formatting inside import section` | Quiz content must be plain text. |
