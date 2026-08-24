@@ -1,9 +1,12 @@
 // Rapport Mastery (Course 1) — Graded_Quiz_Course1.docx -> quiz.json
 //
-// One assessment, thirty questions, three module sections. The outline backs that up: Course 1
-// carries a single "Graded Quiz" row of 30 minutes in its Supplementary Items table, not one
-// per module. Questions are therefore renumbered 1-30 in document order; the source restarts at
-// Q1 inside each module section, which would give the importer three Question 1s.
+// Thirty questions in three module sections, emitted as three module-scoped quizzes -- one
+// import document each. The source already numbers questions 1-10 inside every section, which
+// is exactly what a per-module document needs, so nothing is renumbered.
+//
+// The outline budgets a single 30-minute "Graded Quiz" row for the whole course rather than one
+// per module. The builder splits that budget by question count; the outline row is the only
+// place the course-level figure exists, so it is read here and divided there.
 //
 // SOURCE SHAPE. This is the first quiz in the repo written as tables. Each module section opens
 // with its first question laid out as a table and writes the remaining nine as plain
@@ -63,13 +66,15 @@ lines.forEach((l, i) => {
 });
 if (!sections.length) warn.push('no module headings found');
 
-const questions = [];
+const quizzes = [];
 sections.forEach((sec, si) => {
   const end = si + 1 < sections.length ? sections[si + 1].at : lines.length;
   const idx = [];
   for (let i = sec.at + 1; i < end; i++) if (RE_ANCHOR.test(lines[i])) idx.push(i);
   if (!idx.length) { warn.push('Module ' + sec.number + ': no questions'); return; }
 
+  const questions = [];
+  const seen = new Set();
   idx.forEach((start, k) => {
     const blk = lines.slice(start, k + 1 < idx.length ? idx[k + 1] : end);
     const srcNum = +blk[0].match(RE_ANCHOR)[1];
@@ -116,8 +121,12 @@ sections.forEach((sec, si) => {
 
     // One line, as the importer requires.
     q.prompt = promptParts.join(' ').replace(/\s+/g, ' ').trim();
-    q.num = questions.length + 1;
+    // The source's own per-section number is the document's number: each module becomes its
+    // own import document, so Q1-Q10 is already what the importer needs.
+    q.num = srcNum;
     questions.push(q);
+    if (seen.has(srcNum)) warn.push(id + ': duplicate question number within the module');
+    seen.add(srcNum);
 
     if (!q.prompt) warn.push(id + ': no prompt');
     if (q.options.length !== 4) warn.push(id + ': ' + q.options.length + ' options');
@@ -145,27 +154,25 @@ sections.forEach((sec, si) => {
       warn.push(id + ': REVIEW early colon in prompt -> "' + q.prompt.slice(0, 52) + '"');
     }
   });
+
+  quizzes.push({
+    kind: 'graded', scope: 'module',
+    module: sec.number, moduleTitle: sec.title, questions,
+  });
 });
 
-const quiz = {
-  kind: 'graded',
-  scope: 'course',
-  questions,
-  modules: sections.map(s => ({ number: s.number, title: s.title })),
-};
-
 if (process.argv.includes('--report')) {
-  for (const s of quiz.modules) {
-    const qs = questions.filter(q => q.module === s.number);
-    console.log('Module ' + s.number + ' — ' + s.title);
-    console.log('   ' + qs.length + ' questions  (source Q' + qs[0].srcNum + '-Q' + qs[qs.length - 1].srcNum
-      + ' -> Question ' + qs[0].num + '-' + qs[qs.length - 1].num + ')');
-    console.log('   keys: ' + qs.map(q => q.correct).join(' '));
-    console.log('   maps: ' + qs.map(q => q.mapped).join(' '));
+  for (const z of quizzes) {
+    console.log('Module ' + z.module + ' — ' + z.moduleTitle);
+    console.log('   ' + z.questions.length + ' questions, numbered Q'
+      + z.questions[0].num + '-Q' + z.questions[z.questions.length - 1].num);
+    console.log('   keys: ' + z.questions.map(q => q.correct).join(' '));
+    console.log('   maps: ' + z.questions.map(q => q.mapped).join(' '));
   }
-  console.log('\n' + questions.length + ' questions · warnings: ' + warn.length);
+  const total = quizzes.reduce((a, z) => a + z.questions.length, 0);
+  console.log('\n' + quizzes.length + ' quizzes · ' + total + ' questions · warnings: ' + warn.length);
   warn.forEach(w => console.log('  ' + w));
 } else {
   warn.forEach(w => console.error('WARN ' + w));
-  console.log(JSON.stringify(quiz, null, 2));
+  console.log(JSON.stringify(quizzes, null, 2));
 }

@@ -1,13 +1,17 @@
-// Rapport Mastery (Course 1) — quiz.json + outline.json -> one Assignment Import .docx.
+// Rapport Mastery (Course 1) — quiz.json + outline.json -> one Assignment Import .docx per module.
 //
 //   node src/sales-comms-course-1-build.js <outDir>
 //
-// ONE document, thirty questions. The outline gives Course 1 a single "Graded Quiz" row of 30
-// minutes in its Supplementary Items table rather than one per module, and the source quiz is
-// one file headed "30 Questions | Three Modules". Questions are numbered 1-30 in document
-// order; the source restarts at Q1 in each module section, which would hand the importer three
-// Question 1s. The module a question came from is preserved in the traceability table at the
-// end of the Guide Section.
+// Three documents, ten questions each. The source assessment is one file with three module
+// sections, and it already numbers questions 1-10 inside each section, so a per-module document
+// keeps the source numbering exactly as written.
+//
+// The outline budgets a single 30-minute "Graded Quiz" row for the whole course rather than one
+// per module, so that budget is divided by question count -- 30 questions over 30 minutes gives
+// each ten-question module quiz ten minutes. Deriving it beats hard-coding: if the outline
+// changes its figure, the split follows.
+//
+// Each document lists only its own module's aligned course objective, not all three.
 const fs = require('fs');
 const path = require('path');
 const { zipDir } = require('./lib-zipwriter');
@@ -18,11 +22,11 @@ const TMPL = path.join(SP, 'tmpl');
 const OUT = process.argv[2];
 if (!OUT) { console.error('usage: sales-comms-course-1-build.js <outDir>'); process.exit(2); }
 
-const quiz = JSON.parse(fs.readFileSync(path.join(SP, SLUG, 'quiz.json'), 'utf8'));
+const quizzes = JSON.parse(fs.readFileSync(path.join(SP, SLUG, 'quiz.json'), 'utf8'));
 const { map: VIDEOS, meta: MMETA, course: COURSE } =
   JSON.parse(fs.readFileSync(path.join(SP, SLUG, 'outline.json'), 'utf8'));
 
-const OUT_NAME = 'Coursera_Import_Course_1_Graded_Quiz_Rapport_Mastery.docx';
+const fileFor = z => 'Coursera_Import_Module_' + z.module + '_Graded_Quiz_Rapport_Mastery.docx';
 
 const FONT = 'Source Sans Pro';
 const GREY = '706f6f';
@@ -114,18 +118,33 @@ function table(rows, widths) {
 const tmplDoc = fs.readFileSync(path.join(TMPL, 'word', 'document.xml'), 'utf8');
 const sectPr = (tmplDoc.match(/<w:sectPr[\s\S]*?<\/w:sectPr>/) || ['<w:sectPr/>'])[0];
 
-const nQ = quiz.questions.length;
-const quizMins = COURSE.quizMinutes || 30;
-const timeEst = String(Math.floor(quizMins / 60)).padStart(2, '0') + ':'
-              + String(quizMins % 60).padStart(2, '0');
-const LO_IDS = Object.keys(COURSE.los).sort();
-const moduleList = quiz.modules.map(m => 'Module ' + m.number + ': ' + m.title).join(', ');
+// Everything that varies between the three module documents, in one place.
+const TOTAL_Q = quizzes.reduce((a, z) => a + z.questions.length, 0);
+const COURSE_MINS = COURSE.quizMinutes || 30;
+
+function profile(z) {
+  const m = MMETA['M' + z.module] || { alignedLOs: [], lessons: {} };
+  const nQ = z.questions.length;
+  // The outline states one course-level budget; split it by share of the questions.
+  const mins = Math.max(5, Math.round(COURSE_MINS * nQ / TOTAL_Q));
+  return {
+    nQ,
+    mins,
+    timeEst: String(Math.floor(mins / 60)).padStart(2, '0') + ':' + String(mins % 60).padStart(2, '0'),
+    modTitle: m.title || z.moduleTitle,
+    lessons: Object.keys(m.lessons).length,
+    loIds: (m.alignedLOs || []).filter(id => COURSE.los[id]),
+    file: fileFor(z),
+  };
+}
 
 // ---------- body ----------
-function buildBody() {
+function buildBody(z) {
   const P = [];
+  const p = profile(z);
+  const nQ = p.nQ;
 
-  P.push(para([[COURSE.title + ' — Course 1 Graded Quiz']], { style: 'Title' }));
+  P.push(para([[COURSE.title + ' — Module ' + z.module + ' Graded Quiz']], { style: 'Title' }));
   P.push(note(['This document lets you import questions into the assignment that you create in ' +
     'Coursera. Learn more about ', link('assignments', REL.assignments)]));
 
@@ -136,7 +155,7 @@ function buildBody() {
   P.push(note(['The questions for this quiz are in the ', link('Import Section', REL.examples),
     ' below, after the “Imported content starts here” line (and before the ' +
     '“End of imported content” line). This document contains all ' + nQ + ' graded questions for ' +
-    'Course 1, drawn from ' + quiz.modules.length + ' modules: ' + moduleList + '.']));
+    'Module ' + z.module + ': ' + p.modTitle + '.']));
   P.push(blank());
   P.push(note([['This template is completely flexible and customizable', { color: '666666', i: true }],
     ['. Here are some examples of how you can customize this template:']]));
@@ -152,8 +171,8 @@ function buildBody() {
     ' reference. The Guide Section in this document outlines the other attributes that you can ' +
     'include in the template.']));
   P.push(blank());
-  P.push(note(['To import, create the course graded quiz in Coursera, click ',
-    ['Import', { b: true, color: GREY, i: true }],
+  P.push(note(['To import, create a new graded quiz in Module ' + z.module + ' of your Coursera ' +
+    'course, click ', ['Import', { b: true, color: GREY, i: true }],
     ', and follow the prompts to upload this file. Any content that you import can be edited on ' +
     'Coursera later.']));
   P.push(blank());
@@ -166,7 +185,7 @@ function buildBody() {
   P.push(para([['----- Importable content starts here -----', grey]], { style: 'Heading3', run: grey }));
   P.push(blank());
 
-  for (const q of quiz.questions) {
+  for (const q of z.questions) {
     P.push(para([['Question ' + q.num + ' - multiple choice, shuffle']], { style: 'Heading4' }));
     // One paragraph, one plain run. No character formatting is carried over: the source colours
     // the correct option's letter green, and that colour is a source convention, not content.
@@ -206,13 +225,12 @@ function buildBody() {
   P.push(note(['For reference only. Modify as you like.']));
   P.push(para([['Instructor: ', { b: true }], [COURSE.instructor || '(not stated in the course outline)']]));
   P.push(para([['Course: ', { b: true }], [COURSE.title]]));
-  P.push(para([['Scope: ', { b: true }],
-    ['Whole course — ' + nQ + ' questions across ' + quiz.modules.length + ' modules.']]));
+  P.push(para([['Module: ', { b: true }], ['Module ' + z.module + ' — ' + p.modTitle]]));
   P.push(para([['Assessment type: ', { b: true }],
     ['Graded quiz — counts towards the course grade.']]));
 
   P.push(H('Assignment Title', 2));
-  P.push(para([['Course 1 Graded Quiz: ' + COURSE.title]]));
+  P.push(para([['Module ' + z.module + ' Graded Quiz: ' + p.modTitle]]));
 
   P.push(H('Grading Settings', 2));
   P.push(note(['Choose the grading settings and policies for this assignment. Learn more about ',
@@ -225,7 +243,7 @@ function buildBody() {
     ['Assignment Type (Select with ‘*’)',
       ["If the assignment type is Team, you'll be able to create and assign teams after the assignment is published."],
       ['*Individual', 'Team']],
-    ['Time Estimate (hh:mm)', [], [timeEst]],
+    ['Time Estimate (hh:mm)', [], [p.timeEst]],
     ['Passing Threshold', [], ['80%']],
     ['Feedback Type (Select with ‘*’)',
       ['Feedback will be shown to learners when grades are released. Select from the following:'],
@@ -269,21 +287,22 @@ function buildBody() {
   P.push(note(['Assessments are used to measure learners\' mastery of the course learning objectives. ' +
     'Here, you can indicate which learning objectives are associated with this assessment. Learn more about ',
     link('learning objectives', REL.objectives)]));
-  // The quiz covers the whole course, so every course-level objective is in scope.
-  if (!LO_IDS.length) P.push(para([['No course learning objectives are stated in the outline.']]));
-  LO_IDS.forEach((id, i) => {
+  // Only this module's aligned course objective, not all three.
+  if (!p.loIds.length) P.push(para([['No aligned learning objective is stated for this module.']]));
+  p.loIds.forEach((id, i) => {
     P.push(H('Learning Objective ' + (i + 1), 4));
     P.push(para([[id + ': ' + COURSE.los[id]]]));
   });
 
   P.push(H('Instructions overview', 4));
-  P.push(para([['This graded quiz assesses your understanding of the whole of ' + COURSE.title +
-    '. It contains ' + nQ + ' multiple-choice questions drawn from every video in the course, ' +
-    'across ' + quiz.modules.length + ' modules. Select the single best answer for each question. ' +
-    'Answer options are shuffled, so they may appear in a different order than a classmate sees. ' +
-    'You need a score of 80% or higher to pass, and you may retake the quiz as many times as you ' +
-    'need — your highest score is the one that counts. After you submit, you will see feedback on ' +
-    'every option along with the specific lesson video to revisit.']]));
+  P.push(para([['This graded quiz assesses your understanding of Module ' + z.module + ': ' +
+    p.modTitle + '. It contains ' + nQ + ' multiple-choice questions drawn from every video in ' +
+    'the module' + (p.lessons ? ', across all ' + p.lessons + ' lessons' : '') + '. Select the ' +
+    'single best answer for each question. Answer options are shuffled, so they may appear in a ' +
+    'different order than a classmate sees. You need a score of 80% or higher to pass, and you ' +
+    'may retake the quiz as many times as you need — your highest score is the one that counts. ' +
+    'After you submit, you will see feedback on every option along with the specific lesson ' +
+    'video to revisit.']]));
 
   P.push(H('Review Criteria Summary', 4));
   P.push(para([['Each question is worth 1 point, for a total of ' + nQ + ' points. All questions ' +
@@ -297,9 +316,9 @@ function buildBody() {
   P.push(H('Instructions (not shown to learners)', 4));
   P.push(note(['Provide a general summary of the grading criteria that’s only visible to graders']));
   P.push(para([['No manual grading is required. All ' + nQ + ' questions are auto-graded multiple ' +
-    'choice with a single correct answer worth 1 point each. The answer key, the source module and ' +
-    'the video mapped to each question are listed under “Working area for question design” at the ' +
-    'end of this document.']]));
+    'choice with a single correct answer worth 1 point each. The answer key and the video mapped ' +
+    'to each question are listed under “Working area for question design” at the end of this ' +
+    'document.']]));
 
   P.push(H('Assignment Rubrics', 4));
   P.push(note(['You may want to include a rubric, or scoring, element that isn’t directly tied to a ' +
@@ -312,56 +331,67 @@ function buildBody() {
   P.push(note(['You can use this as a working area to design your questions here but they won’t be ' +
     'imported. Only questions in the Import Section of this doc will be imported.']));
   P.push(blank());
-  P.push(note(['Traceability for each imported question. "Source" is the module section and question ' +
-    'number as written in the assessment document, before renumbering. The Key column reflects the ' +
-    'option order in this document; because shuffle is enabled, learners may see a different order.']));
-  const rows = [{ head: true, cells: [['Q#'], ['Source'], ['Mapped to'], ['Video referenced in feedback'], ['Key']] }];
-  for (const q of quiz.questions) {
+  P.push(note(['Traceability for each imported question. The Key column reflects the option order in ' +
+    'this document; because shuffle is enabled, learners may see the options in a different order.']));
+  const rows = [{ head: true, cells: [['Q#'], ['Mapped to'], ['Video referenced in feedback'], ['Key']] }];
+  for (const q of z.questions) {
     const v = VIDEOS[q.mapped];
-    rows.push({ cells: [['Q' + q.num], ['M' + q.module + ' Q' + q.srcNum], [q.mapped],
+    rows.push({ cells: [['Q' + q.num], [q.mapped],
       ['Module ' + v.module + ' Lesson ' + v.lesson + ': ' + v.video], [q.correct]] });
   }
-  P.push(table(rows, [620, 900, 1100, 4660, 620]));
+  P.push(table(rows, [620, 1100, 5560, 620]));
   P.push(blank());
 
   return P.join('');
 }
 
 // ---------- package writer ----------
-const stage = path.join(SP, 'stage');
-fs.rmSync(stage, { recursive: true, force: true });
-fs.cpSync(TMPL, stage, { recursive: true });
+function writeDocx(z, outPath) {
+  const stage = path.join(SP, 'stage');
+  fs.rmSync(stage, { recursive: true, force: true });
+  fs.cpSync(TMPL, stage, { recursive: true });
 
-// Drop the comments part: the template's margin tips do not apply to a generated file.
-fs.rmSync(path.join(stage, 'word', 'comments.xml'), { force: true });
-const ctPath = path.join(stage, '[Content_Types].xml');
-fs.writeFileSync(ctPath, fs.readFileSync(ctPath, 'utf8')
-  .replace(/<Override[^>]*comments\.xml"\/>/g, ''));
-const relPath = path.join(stage, 'word', '_rels', 'document.xml.rels');
-fs.writeFileSync(relPath, fs.readFileSync(relPath, 'utf8')
-  .replace(/<Relationship[^>]*Target="comments\.xml"[^>]*\/>/g, ''));
+  // Drop the comments part: the template's margin tips do not apply to a generated file.
+  fs.rmSync(path.join(stage, 'word', 'comments.xml'), { force: true });
+  const ctPath = path.join(stage, '[Content_Types].xml');
+  fs.writeFileSync(ctPath, fs.readFileSync(ctPath, 'utf8')
+    .replace(/<Override[^>]*comments\.xml"\/>/g, ''));
+  const relPath = path.join(stage, 'word', '_rels', 'document.xml.rels');
+  fs.writeFileSync(relPath, fs.readFileSync(relPath, 'utf8')
+    .replace(/<Relationship[^>]*Target="comments\.xml"[^>]*\/>/g, ''));
 
-const doc = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-  '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
-  'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
-  'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">' +
-  '<w:body>' + buildBody() + sectPr + '</w:body></w:document>';
-fs.writeFileSync(path.join(stage, 'word', 'document.xml'), doc, 'utf8');
+  const doc = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
+    'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">' +
+    '<w:body>' + buildBody(z) + sectPr + '</w:body></w:document>';
+  fs.writeFileSync(path.join(stage, 'word', 'document.xml'), doc, 'utf8');
 
-fs.mkdirSync(OUT, { recursive: true });
-const outPath = path.join(OUT, OUT_NAME);
-try {
   fs.rmSync(outPath, { force: true });
   zipDir(stage, outPath);
-} catch (err) {
-  if (err.code !== 'EPERM' && err.code !== 'EBUSY') throw err;
-  console.log('LOCKED ' + OUT_NAME + '  (open in another application — not overwritten)');
-  process.exitCode = 2;
+  fs.rmSync(stage, { recursive: true, force: true });
+  return outPath;
 }
-fs.rmSync(stage, { recursive: true, force: true });
 
-if (!process.exitCode) {
-  console.log('WROTE  ' + OUT_NAME + '  (' + nQ + ' questions, ' + fs.statSync(outPath).size + ' bytes)');
-  console.log('  1 document · whole-course graded quiz · ' + quiz.modules.length + ' module sections · '
-    + timeEst + ' time estimate');
+fs.mkdirSync(OUT, { recursive: true });
+const locked = [];
+let total = 0;
+for (const z of quizzes) {
+  const p = profile(z);
+  try {
+    const out = writeDocx(z, path.join(OUT, p.file));
+    total += z.questions.length;
+    console.log('WROTE  ' + p.file.padEnd(58) + ' (' + z.questions.length + ' questions, '
+      + p.timeEst + ', ' + fs.statSync(out).size + ' bytes)');
+  } catch (err) {
+    if (err.code !== 'EPERM' && err.code !== 'EBUSY') throw err;
+    locked.push(p.file);
+    console.log('LOCKED ' + p.file + '  (open in another application — not overwritten)');
+  }
+}
+console.log('\n' + quizzes.length + ' documents · one per module · ' + total + ' questions · '
+  + COURSE_MINS + ' min course budget split by question count');
+if (locked.length) {
+  console.log('\nSTILL LOCKED: ' + locked.join(', '));
+  process.exitCode = 2;
 }

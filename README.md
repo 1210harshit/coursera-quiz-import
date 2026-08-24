@@ -101,18 +101,27 @@ course-content workbook, where a practice quiz is an `Assignment` — the only q
 importer creates — and therefore arrives graded. See
 [Practice quizzes arrive graded](#mapping-decisions).
 
-### Quiz scope follows the outline, not the convention
+### Document scope is a choice, and the outline is only one input
 
-Most courses here budget one graded quiz per module and get one document per module.
-`sales-comms-course-1` does not: its outline gives Course 1 a single 30-minute `Graded Quiz` row
-in the Supplementary Items table, and the source is one file headed *30 Questions | Three
-Modules*. It therefore builds **one** document of 30 questions. Read the outline's assessment
-rows before assuming the per-module shape.
+One document per module is the convention here, and it is what every course builds. But the
+outline does not always agree with it: `sales-comms-course-1` gives Course 1 a single 30-minute
+`Graded Quiz` row in Supplementary Items, and its source is one file headed *30 Questions | Three
+Modules* — yet the assessment is written in three module sections and is delivered as three
+documents, because that is how the course is taught.
 
-When several sections are merged into one document, question numbers have to be reissued: that
-source restarts at `Q1` inside each module section, which would hand the importer three
-`Question 1`s. The builder numbers 1-N in document order and keeps the original section and
-number in the traceability table, and the verifier asserts the sequence has no repeats.
+Where the two disagree, the split is a decision, not a parse. Two things follow from it:
+
+- **Question numbering belongs to the document, not the source.** A source that restarts at `Q1`
+  in each section is already correct for per-module documents and is left alone; merging those
+  sections into one document instead means reissuing 1-N, or the importer receives three
+  `Question 1`s. The verifier asserts each document's numbers run 1-N with no repeats.
+- **A course-level time budget has to be divided.** The outline states 30 minutes for the whole
+  assessment, so each ten-question module document claims ten. Deriving the share from the
+  question count beats hard-coding it: if the outline's figure changes, the split follows, and
+  the verifier recomputes the same way rather than trusting the builder.
+
+Each document also carries only its own module's aligned objective, and the verifier fails a
+document that names another module — the cheapest way to catch a copy-paste between builds.
 
 Run order:
 
@@ -328,7 +337,7 @@ Quirks each parser exists to absorb.
 | **genai-appdev** | Struck-through text throughout; answer key given *only* by a `(Correct)` marker. |
 | **ai-toolkit** | Bare headings as `cstp-course-1`. DPQ rows put the questions in the *Title* column and the placeholder in the description — inverted from every other source. Video descriptions carry a literal `Description: ` label. Aligned objectives state only an id (`LO4`), resolved against Part 1. Lead Instructor is still the template placeholder, so Writer/SME is left blank. Part 1 also holds tool-application tables, ignored because their header cell is not "Learning Items". |
 | **management-mastery** | Struck draft wording; one question carries two complete option sets. |
-| **sales-comms-course-1** | The only quiz in the repo written as **tables**, and only partly: each module section lays its first question out as a table and writes the remaining nine as paragraphs. Flattening every table row into its cells in order reproduces the paragraph sequence exactly, so one line reader handles both. **The answer key is a row label** — the correct option's explanation is headed `Correct` where the others are headed `Feedback`; the source also colours that letter green, which is not read. Question numbering restarts at Q1 in each module section, so the 30 questions are renumbered 1-30 for the single document. |
+| **sales-comms-course-1** | The only quiz in the repo written as **tables**, and only partly: each module section lays its first question out as a table and writes the remaining nine as paragraphs. Flattening every table row into its cells in order reproduces the paragraph sequence exactly, so one line reader handles both. **The answer key is a row label** — the correct option's explanation is headed `Correct` where the others are headed `Feedback`; the source also colours that letter green, which is not read. Question numbering restarts at Q1 in each module section, which is already right for the three per-module documents it builds. |
 | **bridging-soft-skills** | Cleanest source in the repo, and the only one with practice assessments. Eight files, one grammar: `Q1. Scenario:` anchors, `A.` options, `✅ Correct Answer: B` and `Mapped to: M1L1V1` sharing a line, `Explanation for Option B (Correct):` and `Explanation for Other Options:`. Modules 2 and 3 put the options, the key, the mapping and each label's text on one `<w:br/>`-separated paragraph; modules 1 and 4 use real paragraphs. Practice files hold two lesson-scoped quizzes each and restart numbering at Q1 in every lesson. |
 
 ### Course-content parser notes
