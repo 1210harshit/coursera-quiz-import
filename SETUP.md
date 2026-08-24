@@ -123,7 +123,7 @@ The `.docx` files in `work/genai-retail/dist/` are what you upload — one per m
 
 `osha` · `genai-marketing` · `genai-marketing-explanations` · `genai-retail` ·
 `genai-appdev` · `management-mastery` · `pm-course-1` · `pm-course-2` · `pm-course-3` ·
-`cstp-course-1` · `bridging-soft-skills`
+`cstp-course-1` · `bridging-soft-skills` · `sales-comms-course-1`
 
 ### 4a. A course with practice quizzes
 
@@ -214,7 +214,8 @@ public link.
 
 ### Slugs with a course-content parser
 
-`genai-marketing` · `cstp-course-1` · `management-mastery` · `ai-toolkit` · `bridging-soft-skills`
+`genai-marketing` · `cstp-course-1` · `management-mastery` · `ai-toolkit` · `bridging-soft-skills` ·
+`sales-comms-course-1`
 
 ### One exception
 
@@ -286,6 +287,7 @@ grep -c '<w:br'    work/<slug>/quiz/word/document.xml   # line breaks inside par
 | Mapping in the question header (`M1, L1, V1 – Title`) | `management-mastery` |
 | One file per module | `cstp-course-1` |
 | Uniform grammar, and the course also has practice quizzes | `bridging-soft-skills` |
+| Questions laid out in tables, or the key given by a row label | `sales-comms-course-1` |
 
 Point its `SP` paths at your slug, adjust the anchor and label regexes, and iterate with
 `--report`. Then copy the matching `-build.js` and `-verify.js`, updating the two data paths

@@ -55,7 +55,7 @@ Feedback: <explanation> (Refer to M1L1V1: <video title>)
 
 | Rule | Why |
 |---|---|
-| A prompt must not begin `Word:` | A line starting `Scenario:` is read as an **answer option**. This rejected every scenario question until the label was removed. |
+| A prompt must not begin `Word:` | A line starting `Scenario:` is read as an **answer option**. This rejected every scenario question until the label was removed. The shape is a **single token** then a colon; a multi-word phrase (`A buyer says: …`) does not match it, so `sales-comms-course-1` reports those for review rather than treating them as defects. |
 | Guidance prose must not quote the marker strings | Coursera's own template says *"Imported content"* in prose but *"Importable content"* in the markers, precisely to avoid a false match. |
 | Keep the reference inside the `Feedback:` paragraph | A free-standing `Refer to …` paragraph is an unmatched line and rejects the question. |
 | Prompt length is **not** a limit | Coursera's own reference prompt runs ~800 characters. |
@@ -100,6 +100,19 @@ These documents are only the questions. The *item* they are imported into comes 
 course-content workbook, where a practice quiz is an `Assignment` — the only quiz item Coursera's
 importer creates — and therefore arrives graded. See
 [Practice quizzes arrive graded](#mapping-decisions).
+
+### Quiz scope follows the outline, not the convention
+
+Most courses here budget one graded quiz per module and get one document per module.
+`sales-comms-course-1` does not: its outline gives Course 1 a single 30-minute `Graded Quiz` row
+in the Supplementary Items table, and the source is one file headed *30 Questions | Three
+Modules*. It therefore builds **one** document of 30 questions. Read the outline's assessment
+rows before assuming the per-module shape.
+
+When several sections are merged into one document, question numbers have to be reissued: that
+source restarts at `Q1` inside each module section, which would hand the importer three
+`Question 1`s. The builder numbers 1-N in document order and keeps the original section and
+number in the traceability table, and the verifier asserts the sequence has no repeats.
 
 Run order:
 
@@ -315,6 +328,7 @@ Quirks each parser exists to absorb.
 | **genai-appdev** | Struck-through text throughout; answer key given *only* by a `(Correct)` marker. |
 | **ai-toolkit** | Bare headings as `cstp-course-1`. DPQ rows put the questions in the *Title* column and the placeholder in the description — inverted from every other source. Video descriptions carry a literal `Description: ` label. Aligned objectives state only an id (`LO4`), resolved against Part 1. Lead Instructor is still the template placeholder, so Writer/SME is left blank. Part 1 also holds tool-application tables, ignored because their header cell is not "Learning Items". |
 | **management-mastery** | Struck draft wording; one question carries two complete option sets. |
+| **sales-comms-course-1** | The only quiz in the repo written as **tables**, and only partly: each module section lays its first question out as a table and writes the remaining nine as paragraphs. Flattening every table row into its cells in order reproduces the paragraph sequence exactly, so one line reader handles both. **The answer key is a row label** — the correct option's explanation is headed `Correct` where the others are headed `Feedback`; the source also colours that letter green, which is not read. Question numbering restarts at Q1 in each module section, so the 30 questions are renumbered 1-30 for the single document. |
 | **bridging-soft-skills** | Cleanest source in the repo, and the only one with practice assessments. Eight files, one grammar: `Q1. Scenario:` anchors, `A.` options, `✅ Correct Answer: B` and `Mapped to: M1L1V1` sharing a line, `Explanation for Option B (Correct):` and `Explanation for Other Options:`. Modules 2 and 3 put the options, the key, the mapping and each label's text on one `<w:br/>`-separated paragraph; modules 1 and 4 use real paragraphs. Practice files hold two lesson-scoped quizzes each and restart numbering at Q1 in every lesson. |
 
 ### Course-content parser notes
@@ -327,6 +341,7 @@ show what a third will need.
 | **genai-marketing** | Headings carry the name inline (`Module 2: AI-Powered Content Marketing`, `Lesson 1: MultiModal Content Generation`). Descriptions follow a bare `Description:` label on the next paragraph. Every duration is stated. |
 | **management-mastery** | Same bare headings as `cstp-course-1`, single course. `Course Title;` uses a semicolon. Aligned objectives state their own text inline and alternate `LO1:` / `LO2 -`. Two Readings per third lesson. DPQ rows carry no title and no questions, only the placeholder "2 open-ended questions". The Module 3 Role Play and the Promo video have no title. Superseded role-play wording is struck through inline. |
 | **cstp-course-1** | Headings are bare (`Module 1`, `Lesson 1`) with the name on a following `Title of the Module:` line. One document holds four courses, so capture runs from `Course 1` to `Course 2`. Role Play rows and one Reading leave Est. Time empty — each raises a warning and takes a default. Module 2 leaves the aligned-objective value blank and puts `C1LO2 - …` on the next line; Module 3 writes it as a bullet. DPQ rows have no title and prefix each question `DPQ 1:` / `DPQ 2:`. |
+| **sales-comms-course-1** | Bare `Module 1` / `Lesson 1` headings with the name on a following `Title of the …:` line, and one document holding five courses, both as `cstp-course-1` — capture runs from `Course 1` to `Course 2`. Module 1 labels its blurb `Description:` where modules 2 and 3 use `Module Description:`, and some lessons write the blurb as bare prose under the title with no label at all. Every `Role Play Activity` row leaves Est. Time empty. `DPQ` rows leave the title blank and put the prompt in the description, so an untitled one is named `Discussion Prompt N` rather than shipping `DPQ 1` as a learner-facing item name. IVQs are the numbered lesson videos, which matches the outline's own statement of one per instructional video. |
 | **bridging-soft-skills** | `Module N: Name` / `Lesson N: Name` headings as `genai-marketing`. States two things most outlines do not, and both are carried through rather than re-derived: every lesson lists **three higher-order objectives**, which become the module's six, and every instructional video's description ends with a literal `In-video question: …`, which is read directly instead of inferring IVQs from the label — so the intro and outro videos are not flagged. Video rows are labelled bare `Video`, so the V-number is the row's position in its lesson. The orientation table carries six items, including the whole pathway gate, and becomes **its own first module** rather than being prepended to lesson 1; its description is the outline's own welcome prose plus the pathway-gate note. The outline states no objectives for it, so three are authored in the parser as `INTRO_OBJECTIVES` — the only text this pipeline emits that is not taken from a source document, flagged by a warning on every run. Two pathway-gate rows leave the title blank. No `Lead Instructor:` line, so Writer/SME is left blank. |
 
 ### Recurring outline trap
