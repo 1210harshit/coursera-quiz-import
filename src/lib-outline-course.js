@@ -29,6 +29,17 @@ function paraText(p) {
   return [...s.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)].map(m => dec(m[1])).join('');
 }
 
+// Table cells hold CONTENT — prompts, options, explanations, item names, descriptions — and
+// content reaches the import verbatim. So a cell paragraph is only trimmed at its ends, with a
+// non-breaking space folded to an ordinary one so it cannot survive into an import line. A run
+// of spaces inside the text is the author's: the GenAI-PM quiz writes "iterated  unitl" with
+// two spaces, and collapsing it silently edited the source.
+//
+// Bare paragraphs are different. They are matched against heading patterns ("Module 1",
+// "Title of the Lesson:"), so they keep clean(), which folds runs and makes those patterns
+// robust against stray spacing. Nothing quoted verbatim into an import comes from there.
+const cellText_ = s => String(s).replace(/ /g, ' ').replace(/^[ \t]+|[ \t]+$/g, '').trim();
+
 /** Body of a document.xml as an ordered list of {type:'p',text} and {type:'table',rows}. */
 function readBlocks(documentXml) {
   const xml = fs.readFileSync(documentXml, 'utf8');
@@ -44,7 +55,7 @@ function readBlocks(documentXml) {
       const cells = [];
       for (const cm of rm[0].matchAll(/<w:tc>[\s\S]*?<\/w:tc>/g)) {
         const ps = [...cm[0].matchAll(/<w:p\b[\s\S]*?<\/w:p>|<w:p\b[^>]*\/>/g)]
-          .map(p => clean(paraText(p[0]))).filter(Boolean);
+          .map(p => cellText_(paraText(p[0]))).filter(Boolean);
         cells.push(ps.join('\n'));
       }
       rows.push(cells);
@@ -100,9 +111,16 @@ function minutes(text) {
   return one ? +one[1] : null;
 }
 
-/** Collapse the whitespace an outline table cell picks up, keeping paragraph breaks. */
+/**
+ * Tidy a table cell for use, keeping paragraph breaks. Trims each line's ends and drops empty
+ * lines; does NOT collapse runs of spaces inside a line, for the reason given at readBlocks —
+ * cell text is content, and content reaches the import verbatim.
+ */
 function cellText(s) {
-  return (s || '').split('\n').map(l => clean(l)).filter(Boolean).join('\n');
+  return (s || '').split('\n')
+    .map(l => l.replace(/ /g, ' ').replace(/^[ \t]+|[ \t]+$/g, ''))
+    .filter(l => l.trim())
+    .join('\n');
 }
 
 function writeJson(obj, warnings) {
