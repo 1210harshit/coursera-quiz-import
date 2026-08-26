@@ -22,11 +22,21 @@ function isStruck(run) {
 }
 
 function paraText(p) {
-  // <w:br/> separates lines inside one paragraph in several sources; keep them as newlines
-  // so multi-question DPQ cells and role-play briefs survive as written.
-  let s = p.replace(/<w:br\s*\/>/g, '\n').replace(/<w:tab\s*\/>/g, ' ');
-  s = s.replace(/<w:r\b[^>]*>[\s\S]*?<\/w:r>/g, run => (isStruck(run) ? '' : run));
-  return [...s.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)].map(m => dec(m[1])).join('');
+  // <w:br/> separates lines inside one paragraph in several sources; keep them as newlines so
+  // multi-question DPQ cells, role-play briefs and break-separated objective lists survive as
+  // written.
+  //
+  // The break has to be picked up by the SAME matcher that reads the text, alternating with
+  // it. Substituting a newline into the XML first does not work: a <w:br/> sits between runs,
+  // outside any <w:t>, so the newline lands outside the elements the matcher reads and is
+  // dropped. That silently ran the CSTP outline's three course objectives together as
+  // "…initiatives.C2LO2: Influence…". lib-lines.js alternates for the same reason.
+  const s = p.replace(/<w:r\b[^>]*>[\s\S]*?<\/w:r>/g, run => (isStruck(run) ? '' : run));
+  let out = '';
+  for (const m of s.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>|<w:br\s*\/?>|<w:tab\s*\/?>/g)) {
+    out += m[1] !== undefined ? dec(m[1]) : (m[0].startsWith('<w:tab') ? ' ' : '\n');
+  }
+  return out;
 }
 
 // Table cells hold CONTENT — prompts, options, explanations, item names, descriptions — and
