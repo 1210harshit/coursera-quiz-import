@@ -147,8 +147,16 @@ if (missingTypes.length) {
   const body = Object.keys(ranges.rows).map(Number).sort((a, b) => a - b)
     .map(n => ranges.rows[n]).join('');
   fs.writeFileSync(rangesFile, ranges.head + body + ranges.tail);
+  // Appending widens the dropdown so the workbook opens and verifies cleanly. It does NOT make
+  // Coursera accept the value — the importer has its own fixed list and drops every row that
+  // carries anything else, keeping the rest of the upload so the loss is silent. See README,
+  // "An appended type does NOT import".
   console.error(`WARN item types absent from the template's Ranges sheet, appended: `
-    + missingTypes.join(', '));
+    + missingTypes.join(', ')
+    + `\n     Appending widens the dropdown ONLY. Coursera's importer keeps its own vocabulary,`
+    + `\n     and has been observed to drop every row carrying a type it does not recognise —`
+    + `\n     silently, keeping the rest of the upload. Import-test one module before relying on it.`
+    + `\n     Observed to import: Video, Reading, Discussion Prompt, Peer Review, Assignment.`);
 }
 
 // --- rows ------------------------------------------------------------------------------

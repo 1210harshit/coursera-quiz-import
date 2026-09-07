@@ -123,7 +123,8 @@ The `.docx` files in `work/genai-retail/dist/` are what you upload — one per m
 `osha` · `genai-marketing` · `genai-marketing-explanations` · `genai-retail` ·
 `genai-appdev` · `management-mastery` · `pm-course-1` · `pm-course-2` · `pm-course-3` ·
 `cstp-course-1` · `google-ads` · `google-ads-final` · `paid-social` · `paid-ads-11` ·
-`ai-toolkit-v2` · `digital-marketing` · `shopify` · `websites-15`
+`ai-toolkit-v2` · `digital-marketing` · `shopify` · `websites-15` · `ai-products` ·
+`soft-skills` · `digital-transformation`
 
 `google-ads-final` is the rewritten assessment for the same course as `google-ads`, against the
 same outline. It supersedes it: per-option explanations rather than one shared across four, a
@@ -192,10 +193,78 @@ public link.
 ### Slugs with a course-content parser
 
 `genai-marketing` · `cstp-course-1` · `management-mastery` · `ai-toolkit` · `google-ads` ·
-`paid-social` · `paid-ads-11` · `ai-toolkit-v2` · `digital-marketing` · `shopify` · `websites-15`
+`paid-social` · `paid-ads-11` · `ai-toolkit-v2` · `digital-marketing` · `shopify` · `websites-15` ·
+`ai-products` · `soft-skills` · `digital-transformation`
 
 `ai-toolkit-v2` is the v2 outline of the course `ai-toolkit` reads at v1. Build from
 `ai-toolkit-v2`; the older parser is kept only for the v1 document.
+
+### The Dummies convention
+
+`soft-skills` is a **Dummies** course, not a generic Starweaver one, and it is built to a
+different set of rules. The course owner states which courses these are; do not infer it from
+the document. Where a Dummies course and the generic pipeline disagree, the rules below win.
+
+**Structure.** The two course-level tables become modules of their own rather than being folded
+into lessons, so the outline's own modules shift up by one:
+
+| Outline | Workbook |
+|---|---|
+| `Introduction to the Entire Course` | Module 1, one lesson holding its rows |
+| `Module 1` … `Module 4` | Modules 2-5, unchanged |
+| `Supplementary Items for the Entire Course` | a final module, `Course Wrap-Up and Next Steps` |
+
+This renumbering is **course-content only**. The quiz pipeline's `M<x>L<y>V<z>` codes are written
+against the outline's own numbering, so `soft-skills-parse-outline.js` keeps the original numbers
+and must not be changed to match.
+
+**Item types.** Stated by the course owner. These are the owner's call, not a derivation — do
+not substitute one because a generic outline would use something else.
+
+| Outline label | Type | | Outline label | Type |
+|---|---|---|---|---|
+| Infographic / Reference Guide | Reading | | Practice Quiz | **Assignment** |
+| Pre Course Diagnostic Guidance | Reading | | Discussion Prompt | Discussion Prompt |
+| Interactive Assessment | Quizzes | | Hands-on Lab | Peer Review |
+| Recommended Learning Path | Reading | | Roleplay | Roleplay |
+| Coach Dialogue | Dialogue | | The Part of Tens | Reading |
+| Cheat Sheet | Reading | | Course-end Project | Peer Review |
+
+**Import history.** The first upload of this workbook lost 17 of its 62 items, in two different
+ways, and the difference matters:
+
+| Type | Coursera returned | Reading |
+|---|---|---|
+| `Quiz` | *"Item type Quiz is not supported"* | the type was read and refused |
+| `Quizzes`, `Dialogue`, `Roleplay` | `ITEM_TYPE_UNSET` / *"Invalid item type"* | **no type was read at all** |
+
+Only `Quiz` is a verdict on the type. The other three are Coursera failing to recognise the
+string: the cells are written correctly — a `Roleplay` cell is byte-identical in encoding and
+style to a `Peer Review` cell that imported — so if they are refused again the thing to vary is
+the **spelling** (`Role Play`, `Dialogues`, …), not the mechanism. `Practice Quiz` is therefore
+the one entry mapped away from what was asked, to `Assignment`, which is how this template
+represents a quiz and is what `Graded Assessment` already uses.
+
+The parser names every off-template type on each run, with the message Coursera returned, because
+the failure is silent: `course-import-build.js` appends the type to the Ranges sheet, the verifier
+passes, and only the upload reveals the loss.
+
+**Three quiz pipelines, not one.** A Dummies course ships graded quizzes, per-lesson practice
+quizzes and a pre-course diagnostic, each with its own parser, builder and verifier:
+
+```bash
+node src/soft-skills-parse-outline.js    > work/soft-skills/outline.json   # always first
+node src/soft-skills-parse-quiz.js       > work/soft-skills/quiz.json
+node src/soft-skills-parse-practice.js   > work/soft-skills/practice.json
+node src/soft-skills-parse-diagnostic.js > work/soft-skills/diagnostic.json
+node src/soft-skills-build.js            work/soft-skills/dist             # 4, one per module
+node src/soft-skills-practice-build.js   work/soft-skills/dist-practice    # 8, one per lesson
+node src/soft-skills-diagnostic-build.js work/soft-skills/dist-diagnostic  # 1
+```
+
+The diagnostic runs before any video is watched, so its feedback references the **module** a
+question is drawn from rather than a video — `Refer to Module 1: <title>`. Its verifier checks
+that form, not the `M<x>L<y>V<z>` one.
 
 ### One exception
 
@@ -278,6 +347,12 @@ grep -c '<w:br'    work/<slug>/quiz/word/document.xml   # line breaks inside par
 | Mapping, key and prompt all inside the question's own table | `paid-ads-11` |
 | A mapping stated twice, as a code and as a title | `paid-ads-11` |
 | The answer key as a second paragraph inside the question cell | `ai-toolkit-v2` |
+| `Q1.` headings, `A.` options, `A:` / `B (Correct):` explanations | `ai-products` |
+| The key and the mapping on one line (`✅ Correct Answer: B     Mapped to: M1L1V1`) | `ai-products` |
+| The scenario and the question as two separate paragraphs | `ai-products` |
+| The scenario label on the question header (`Q1. Scenario:`), the scenario below it | `soft-skills` |
+| Per-module files where module 1 is `<w:br/>`-formatted and the rest are not | `soft-skills` |
+| Options whose letter is followed by a tab, a space, or nothing at all | `digital-transformation` |
 
 ### When a source states its mapping twice
 
@@ -299,6 +374,29 @@ Point its `SP` paths at your slug, adjust the anchor and label regexes, and iter
 `--report`. Then copy the matching `-build.js` and `-verify.js`, updating the two data paths
 and the output filename.
 
+### When the outline states no video number
+
+`ai-products` is the case to read before trusting a mapping the outline did not write down.
+Its learning-items table has no `Learning Items` column, so no row says `Video 1` — every
+`M<x>L<y>V<z>` key is **derived** by counting video rows within the lesson. Two rules make the
+derived numbers match what the quiz references, and both have to hold:
+
+1. only a row whose `Video Format` is a production format (Talking Head, Conceptual, Demo)
+   takes a number. Reading, Discussion, Activity/Exercise and Interactive rows sit in the same
+   tables and must not consume one.
+2. `Module Introduction` is **not** numbered. It is the row that makes the count come out
+   right: 20 video rows, minus the two module introductions, is the 18 instructional videos
+   Part 1 promises one IVQ each — and the quiz's own lowest reference in each lesson 1 is the
+   row *after* the introduction.
+
+Get rule 2 wrong and nothing fails. Every reference in each lesson 1 simply points one video
+too early, which no verifier can catch because the mapping is still internally consistent. The
+parser therefore reports the exclusion on every run rather than leaving it in a comment.
+
+Check it the way it was checked here: the derived key count must equal the outline's own IVQ
+claim, and `--report` on the quiz parser must show every question mapped inside its own module
+with no unknown codes.
+
 ### A course-content parser
 
 Cheaper — only the parser is new, since `course-import-build.js` and `course-import-verify.js`
@@ -310,6 +408,9 @@ serve every course. Copy whichever existing `*-parse-course.js` matches the head
 | Bare `Module N` + `Title of the Module:` on the next line | `cstp-course-1` |
 | One document holding several courses | `cstp-course-1` (it stops at the next `Course N`) |
 | Bare headings, `Description: ` labels, aligned objective as a bare `LO4` | `ai-toolkit` or `google-ads` |
+| A learning-items table with **no `Learning Items` label column** | `ai-products` |
+| A `Learning Items` column whose video rows are the bare word `Video`, unnumbered | `soft-skills` |
+| Learning-items tables **nested inside other tables** | `digital-transformation` |
 
 The item mapping, duration rules and block reader come from `lib-outline-course.js`, so a new
 parser is usually just the heading regexes plus its own defaults for whatever the source

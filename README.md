@@ -225,12 +225,37 @@ these outlines ends in a submitted artefact ("Submit a document containing three
 rather than an in-platform lab environment. Each one therefore needs submission instructions
 and a rubric configured in Coursera after import — an Ungraded Lab would not.
 
-**Roleplay postdates the template.** Coursera's AI role-play item is not in the Course
-Template's Ranges lookup, so `course-import-build.js` appends any such type to rows 15+ of that
-sheet and widens the item-type dropdown to `$E$3:$E$<last>` to match. Without that the value
-still imports, but the dropdown rejects it the moment anyone edits the cell. The build prints
-a `WARN` naming every type it had to append; the verifier then confirms the dropdown range
-actually reaches it.
+**An appended type does NOT import.** `course-import-build.js` appends any type missing from the
+Course Template's Ranges lookup to rows 15+ of that sheet and widens the item-type dropdown to
+`$E$3:$E$<last>` to match. That makes the workbook open cleanly in Excel and pass
+`course-import-verify.js`, and it is worth doing — but it does **not** make Coursera accept the
+value. The importer has its own fixed list and refuses anything outside it:
+
+```
+Quiz item in cell A61 failed to be processed. Error reason: Item type Quiz is not supported
+ITEM_TYPE_UNSET item in cell A57 failed to be processed. Error reason: Invalid item type in cell A57.
+```
+
+That is a real result from the `soft-skills` upload, which lost 17 of its 62 items to four
+appended types — `Quiz`, `Quizzes`, `Dialogue` and `Roleplay` — while every type on the
+template's own master list (`Video`, `Reading`, `Discussion Prompt`, `Peer Review`, `Assignment`)
+imported without complaint. Coursera keeps the rest of the upload, so the loss is silent.
+
+**Two different failures, and the difference matters.** `Quiz` came back named — Coursera read the
+type and refused it. The other three came back as `ITEM_TYPE_UNSET`, meaning **no type was read
+at all**. That is not a verdict on the type; it is Coursera failing to recognise the string. The
+workbook is not at fault: a `Roleplay` cell is byte-identical in encoding and style to a
+`Peer Review` cell that imported in the same upload. So when a type comes back `ITEM_TYPE_UNSET`,
+vary the **spelling** — `Role Play`, `Dialogues` — rather than the mechanism.
+
+**Observed to import:** `Video`, `Reading`, `Discussion Prompt`, `Peer Review`, `Assignment`.
+The template's master list at `$E$3:$E$11` adds `Graded Discussion Prompt`, `Programming`,
+`App item` and `Ungraded Lab`, which are untested here. A build `WARN` naming an appended type is
+not a note about the dropdown — it is a warning that those rows may be dropped on import, so
+import-test one module before relying on the workbook.
+
+Earlier revisions of this file claimed an appended value "still imports". It does not follow
+automatically; the paragraphs above replace that claim.
 
 Video format maps to the three the template's dropdown offers: `Talking Head` → *Talking
 head*, `Demo` / `Screenshare` → *Screen capture*, `Conceptual` / `Slides` → *Slide voiceover*.
@@ -301,6 +326,7 @@ Quirks each parser exists to absorb.
 | **websites-15** | Table shape as `shopify`, including the `(Correct)` marker being the only statement of the key. What is new is that it **admits what it does not know**: an opening SOURCING NOTICE says captions existed for only 64 of the course's 308 videos, so 28 questions come from transcripts and 122 are `[DRAFT - no transcript]`, written from titles alone. The two groups carry different source lines and map to different levels — a video title for the 28, a lesson for the 122 — so the builder writes `(Refer to M3L1: <lesson>)` for the latter rather than guessing a video. Every DRAFT question is flagged in its document's working area. Answer key is only ever A or B. See "When a source states a lesson, not a video" below. |
 | **shopify** | In the `ai-toolkit-v2` family, with one thing no other source does: there is **no answer-key line at all** — not after the table, not inside the question cell, nowhere. The key exists only as the `(Correct)` marker on one of the four explanations, so here that marker *is* the key rather than a second opinion about it, and a question with none or with two is a hard failure. Only `genai-appdev` does the same. Its mapping is the dotted video number in a `Source video: 1.1.2 - Title` line; the titles themselves contain hyphens, so only the first separator delimits. Answer key is B on 38 of 40. |
 | **paid-ads-11** | The tidiest table: everything a question needs is inside it, including the mapping and the key, so nothing is carried across blocks. Module headings use a colon. `(Correct)` / `(Incorrect)` markers as `paid-social`. Its one real defect is **stale mapping codes**: on 17 of 110 questions the code disagrees with the video title stated beside it, and the prompt is always about the *title's* video — the codes were written against an earlier numbering. `resolve()` therefore prefers the title, and prefers an in-module match over an out-of-module one, because modules 1 and 3 share generic video names. Four module 3 questions have no in-module video at all and are reported as a content gap. |
+| **ai-products** | Paragraph-based like `google-ads-final`, but the key and the mapping share **one line** (`✅ Correct Answer: B     Mapped to: M1L1V1`), so a single mistyped line loses both. The `(Correct)` marker on one of the four `A:` / `B (Correct):` explanations states the key a second time and is the only independent witness available; a disagreement is reported. Options are labelled `A.` and explanations `A:` — one character apart, which is why both patterns are punctuation-specific. 17 of 20 prompts are scenario-framed with the scenario and the question as **separate paragraphs**, not `<w:br/>`-separated as in `google-ads-final`; both reach the builder the same way. Its outline states no video numbers at all, so the mapping targets are derived — see "When the outline states no video number" in SETUP. Answer key leans hard to B (A:6 **B:13** C:1 D:0). |
 
 ### Course-content parser notes
 
@@ -318,6 +344,7 @@ show what a third will need.
 | **ai-toolkit-v2** | The v2 outline for the same course as `ai-toolkit`, now on the shared template. Part 1 writes each objective as `LO1 (125 chars): …` — an authoring note between the id and the colon, skipped rather than captured. Four objectives serve eight modules, so several share one; nothing assumes a 1:1 mapping. Every Proof-of-Learning count matches the tables. |
 | **shopify** | **Not the Starweaver template at all** — a design document, and the first outline here that needed a course parser written from nothing. Modules are single-cell banner tables (`MODULE 1 OF 4  \|  LO1` / name / `Learner goal:`), lessons are `Lesson 1.1 — Name  (Section 1)` paragraphs, and each lesson carries a `# \| Video Title \| Description` table plus a `Type \| Activity \| Duration` one. It has no `Learning Items` table, no per-item duration column, and no Lead Instructor line. It also introduces the **Quiz** item type (Coursera's ungraded practice quiz), appended to the Ranges lookup at build time exactly as `Roleplay` is. See "A source off the template" below. |
 | **digital-marketing** | The shared template again, and the largest course here: 572 instructional videos over 24 lessons, 45h 26m. Two gaps the parsers report rather than paper over — Module 7 has no `Intro Video` row where every other module does, and it carries two lessons where the rest carry three. It also repeats the `Help` video name that broke the `paid-ads-11` import, at `M2L3V15`; the same `NAME_FIXUPS` treatment applies. |
+| **ai-products** | The shared template with **one column missing**: the learning-items table is `Learning Item Title \| Video Format \| High level Description \| Est. Time \| Link`, with no `Learning Items` column, so no row states its own kind. `itemType()` still recognises the course-level and activity rows from their *titles* (`Graded Quiz`, `DPQ`, `Hands-on Lab: …`), and everything else is typed from the `Video Format` column, which doubles as the kind column here — a video row names a production format, the rest name a Coursera kind. Three rows need their own handling: the lesson-3 tables carry a **second header row** after which the rows are module-level, not lesson content; `Course-end Project` is written one column to the left, so its real name sits in the Video Format cell; and two rows prefix the name with their own kind and an arrow (`Hands-on-lab → Hands-on Lab: …`). Five objectives, two modules, one aligned each — `LO3`–`LO5` are promised by the description and claimed by no module. |
 
 ### When a source states a lesson, not a video
 
