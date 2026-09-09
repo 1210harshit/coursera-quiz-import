@@ -194,16 +194,17 @@ public link.
 
 `genai-marketing` · `cstp-course-1` · `management-mastery` · `ai-toolkit` · `google-ads` ·
 `paid-social` · `paid-ads-11` · `ai-toolkit-v2` · `digital-marketing` · `shopify` · `websites-15` ·
-`ai-products` · `soft-skills` · `digital-transformation`
+`ai-products` · `soft-skills` · `digital-transformation` · `emotional-intelligence`
 
 `ai-toolkit-v2` is the v2 outline of the course `ai-toolkit` reads at v1. Build from
 `ai-toolkit-v2`; the older parser is kept only for the v1 document.
 
 ### The Dummies convention
 
-`soft-skills` is a **Dummies** course, not a generic Starweaver one, and it is built to a
-different set of rules. The course owner states which courses these are; do not infer it from
-the document. Where a Dummies course and the generic pipeline disagree, the rules below win.
+`soft-skills` and `emotional-intelligence` are **Dummies** courses, not generic Starweaver ones,
+and they are built to a different set of rules. The course owner states which courses these are;
+do not infer it from the document. Where a Dummies course and the generic pipeline disagree, the
+rules below win.
 
 **Structure.** The two course-level tables become modules of their own rather than being folded
 into lessons, so the outline's own modules shift up by one:
@@ -218,17 +219,27 @@ This renumbering is **course-content only**. The quiz pipeline's `M<x>L<y>V<z>` 
 against the outline's own numbering, so `soft-skills-parse-outline.js` keeps the original numbers
 and must not be changed to match.
 
-**Item types.** Stated by the course owner. These are the owner's call, not a derivation — do
-not substitute one because a generic outline would use something else.
+**Item types.** The course owner chooses what each item *is*. What the importer will *accept* is
+not a choice — it is a closed list, established by upload and recorded below. Where the owner's
+preferred name is not in that list, the row is mapped to the nearest accepted type and the item
+name carries the intent; the true type has to be set in the Coursera UI afterwards.
 
-| Outline label | Type | | Outline label | Type |
+| Outline label | Type written | | Outline label | Type written |
 |---|---|---|---|---|
-| Infographic / Reference Guide | Reading | | Practice Quiz | **Assignment** |
-| Pre Course Diagnostic Guidance | Reading | | Discussion Prompt | Discussion Prompt |
-| Interactive Assessment | Quizzes | | Hands-on Lab | Peer Review |
-| Recommended Learning Path | Reading | | Roleplay | Roleplay |
-| Coach Dialogue | Dialogue | | The Part of Tens | Reading |
-| Cheat Sheet | Reading | | Course-end Project | Peer Review |
+| Infographic / Reference Guide | Reading | | Hands-on Lab | Peer Review |
+| Pre Course Diagnostic Guidance | Reading | | Roleplay | Peer Review † |
+| Recommended Learning Path | Reading | | Course-end Project | Peer Review |
+| The Part of Tens | Reading | | Coach Dialogue | Discussion Prompt † |
+| Cheat Sheet | Reading | | Discussion Prompt | Discussion Prompt |
+| Practice Quiz | Practice Assignment | | Graded Assessment | Assignment |
+| Interactive Assessment | Practice Assignment | | | |
+
+† A substitution, not the owner's name. `Roleplay` and `Dialogue` have been refused on three
+uploads across two courses; the importer has no string for either concept, so no workbook can
+create them.
+
+Every string in that column has imported on a real upload. Three earlier revisions of this table
+did not, and cost 17, 12 and 21 rows respectively.
 
 **Import history.** The first upload of this workbook lost 17 of its 62 items, in two different
 ways, and the difference matters:
@@ -238,16 +249,44 @@ ways, and the difference matters:
 | `Quiz` | *"Item type Quiz is not supported"* | the type was read and refused |
 | `Quizzes`, `Dialogue`, `Roleplay` | `ITEM_TYPE_UNSET` / *"Invalid item type"* | **no type was read at all** |
 
-Only `Quiz` is a verdict on the type. The other three are Coursera failing to recognise the
-string: the cells are written correctly — a `Roleplay` cell is byte-identical in encoding and
-style to a `Peer Review` cell that imported — so if they are refused again the thing to vary is
-the **spelling** (`Role Play`, `Dialogues`, …), not the mechanism. `Practice Quiz` is therefore
-the one entry mapped away from what was asked, to `Assignment`, which is how this template
-represents a quiz and is what `Graded Assessment` already uses.
+Only `Quiz` is a verdict on the type. The rest are Coursera failing to recognise the string, and
+the cells are written correctly — a refused cell is byte-identical in encoding and style to an
+accepted one in the same upload.
 
-The parser names every off-template type on each run, with the message Coursera returned, because
-the failure is silent: `course-import-build.js` appends the type to the Ranges sheet, the verifier
-passes, and only the upload reveals the loss.
+**The importer's vocabulary is closed.** `emotional-intelligence` uploaded twice more, losing 12
+rows and then 21, and the second pair settles it. The same nine cells went up in consecutive
+uploads of a structurally identical workbook:
+
+| Cells A41, A61, A71, A94, A104, A127, A137, A160, A170 | String | Result |
+|---|---|---|
+| upload 1 | `Practice Assignment` | **imported, 9 of 9** |
+| upload 2 | `Practice Assessment` | **refused, 9 of 9** |
+
+One word, same rows, same file structure. That rules out formatting, encoding, the dropdown and
+row position: the match is exact-string against a fixed list. `Assignment` is in it, `Assessment`
+is not — in any position. Three things that do **not** decide acceptance:
+
+- the bundled template's Ranges list. `Practice Assignment` is absent from it and imports;
+  `Graded Assessment` is equally absent and is refused.
+- appending the type to Ranges. `course-import-build.js` does that and widens the dropdown, the
+  file then opens cleanly in Excel and `course-import-verify.js` passes. Coursera ignores it.
+- how close the name looks.
+
+**Observed to import:** `Video`, `Reading`, `Discussion Prompt`, `Peer Review`, `Assignment`,
+`Practice Assignment`.
+**Observed to be refused:** `Quiz` (named), `Quizzes`, `Dialogue`, `Roleplay`,
+`Graded Assignment`, `Practice Assessment`, `Graded Assessment` (all `ITEM_TYPE_UNSET`).
+
+`emotional-intelligence-parse-course.js` holds these as `OBSERVED_IMPORTS` and
+`OBSERVED_REFUSED` and checks every resolved type against them on each run: a refused string is
+reported as a `REGRESSION` naming the rows it has already cost, and an unseen one as untested.
+That check exists because the failure is silent — the build appends the type, the verifier passes,
+and only the upload reveals the loss.
+
+`Dialogue` and `Roleplay` have no accepted spelling. Both have been refused on three uploads
+across two courses, so the importer has no string for either concept and no workbook can create
+one. Either map them to an accepted type, as the table above does, or leave those rows out and
+add the items by hand in Coursera.
 
 **Three quiz pipelines, not one.** A Dummies course ships graded quizzes, per-lesson practice
 quizzes and a pre-course diagnostic, each with its own parser, builder and verifier:
@@ -261,6 +300,11 @@ node src/soft-skills-build.js            work/soft-skills/dist             # 4, 
 node src/soft-skills-practice-build.js   work/soft-skills/dist-practice    # 8, one per lesson
 node src/soft-skills-diagnostic-build.js work/soft-skills/dist-diagnostic  # 1
 ```
+
+`emotional-intelligence` runs the same seven commands with its own slug. Its practice quiz is the
+one place the two diverge: it writes a single combined `Module N, Lesson N: Title` heading where
+`soft-skills` writes a module heading and a lesson heading as separate paragraphs, so neither of
+the soft-skills header regexes matches it and the module title comes from the outline alone.
 
 The diagnostic runs before any video is watched, so its feedback references the **module** a
 question is drawn from rather than a video — `Refer to Module 1: <title>`. Its verifier checks
@@ -353,6 +397,8 @@ grep -c '<w:br'    work/<slug>/quiz/word/document.xml   # line breaks inside par
 | The scenario label on the question header (`Q1. Scenario:`), the scenario below it | `soft-skills` |
 | Per-module files where module 1 is `<w:br/>`-formatted and the rest are not | `soft-skills` |
 | Options whose letter is followed by a tab, a space, or nothing at all | `digital-transformation` |
+| A practice quiz whose heading combines both numbers (`Module N, Lesson N: Title`) | `emotional-intelligence` |
+| Per-module files differing only in paragraph style, not in line grammar | `emotional-intelligence` |
 
 ### When a source states its mapping twice
 

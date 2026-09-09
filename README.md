@@ -248,11 +248,35 @@ workbook is not at fault: a `Roleplay` cell is byte-identical in encoding and st
 `Peer Review` cell that imported in the same upload. So when a type comes back `ITEM_TYPE_UNSET`,
 vary the **spelling** — `Role Play`, `Dialogues` — rather than the mechanism.
 
-**Observed to import:** `Video`, `Reading`, `Discussion Prompt`, `Peer Review`, `Assignment`.
-The template's master list at `$E$3:$E$11` adds `Graded Discussion Prompt`, `Programming`,
-`App item` and `Ungraded Lab`, which are untested here. A build `WARN` naming an appended type is
-not a note about the dropdown — it is a warning that those rows may be dropped on import, so
-import-test one module before relying on the workbook.
+**The vocabulary is closed, and the match is exact-string.** `emotional-intelligence` then
+uploaded twice, losing 12 rows and 21, and the pair settles what soft-skills could only suggest.
+The same nine cells — A41, A61, A71, A94, A104, A127, A137, A160, A170 — went up in consecutive
+uploads of a structurally identical workbook:
+
+| | String | Result |
+|---|---|---|
+| upload 1 | `Practice Assignment` | **imported, 9 of 9** |
+| upload 2 | `Practice Assessment` | **refused, 9 of 9** |
+
+One word, same rows, same structure. Formatting, encoding, the dropdown and row position are all
+ruled out. `Assignment` is in the importer's list; `Assessment` is not, in any position. Nor does
+the template's own Ranges list predict acceptance in either direction — `Practice Assignment` is
+absent from it and imports, `Graded Assessment` is absent and is refused.
+
+**Observed to import:** `Video`, `Reading`, `Discussion Prompt`, `Peer Review`, `Assignment`,
+`Practice Assignment`.
+**Observed to be refused:** `Quiz` (named), `Quizzes`, `Dialogue`, `Roleplay`,
+`Graded Assignment`, `Practice Assessment`, `Graded Assessment` (all `ITEM_TYPE_UNSET`).
+
+`Dialogue` and `Roleplay` have been refused on three uploads across two courses. There is no
+known accepted spelling for either, so no workbook can create those item types — map them to an
+accepted type and set the real one in the Coursera UI, or add those items by hand.
+
+The template's master list — the Private column of `templates/coursera-course-template.xlsx`,
+sheet4 column B — also offers `Graded Discussion Prompt`, `Programming`, `App item`,
+`Ungraded Lab`, `Teammate Review` and `Ungraded Plugin`, all untested here. A build `WARN` naming
+an appended type is not a note about the dropdown — it is a warning that those rows may be
+dropped, so import-test one module and compare the item count before relying on the workbook.
 
 Earlier revisions of this file claimed an appended value "still imports". It does not follow
 automatically; the paragraphs above replace that claim.

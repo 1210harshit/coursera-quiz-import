@@ -156,7 +156,11 @@ if (missingTypes.length) {
     + `\n     Appending widens the dropdown ONLY. Coursera's importer keeps its own vocabulary,`
     + `\n     and has been observed to drop every row carrying a type it does not recognise —`
     + `\n     silently, keeping the rest of the upload. Import-test one module before relying on it.`
-    + `\n     Observed to import: Video, Reading, Discussion Prompt, Peer Review, Assignment.`);
+    + `\n     Observed to import: Video, Reading, Discussion Prompt, Peer Review, Assignment,`
+    + ` Practice Assignment.`
+    + `\n     Observed to be REFUSED: Quiz, Quizzes, Dialogue, Roleplay, Graded Assignment,`
+    + ` Practice Assessment, Graded Assessment.`
+    + `\n     "Assessment" has never been accepted in any position; "Assignment" has.`);
 }
 
 // --- rows ------------------------------------------------------------------------------
