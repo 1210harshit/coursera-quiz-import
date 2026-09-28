@@ -32,10 +32,13 @@ const OUT = process.argv[2];
 const atRisk = [];
 // Mappings whose outline entry carries no video title — see referLine.
 const untitled = new Set();
+// Reference on its own line, below the explanation. See the note at the feedback line
+// below; --no-br restores the single-line form.
+const REF_OWN_LINE = !process.argv.includes('--no-br');
 
 // managing-parse-quiz.js runs WITHOUT an outline by design — this course states its module
 // titles in the source, so the parse does not need one. The build does: the reference line
-// inside every feedback paragraph ends "(Refer to M1L1V1: <video title>)", and the title
+// inside every feedback block ends "Refer to Module 1 Lesson 1 Video 1: <video title>", and the title
 // exists nowhere but the outline, as do the course title, the instructor and the learning
 // objectives printed on each cover page. Reaching this point without one is therefore an
 // ordinary state rather than a mistake, and it gets an ordinary message instead of a stack.
@@ -49,7 +52,7 @@ if (!fs.existsSync(quizPath)) {
 if (!fs.existsSync(outlinePath)) {
   console.error(`ENOENT ${outlinePath}\n`
     + 'The parser does not need the outline; the build does. Every feedback line ends\n'
-    + '"(Refer to M1L1V1: <video title>)" and the titles are only in the outline, along with\n'
+    + '"Refer to Module 1 Lesson 1 Video 1: <video title>" and the titles are only in the outline, along with\n'
     + 'the course title, the instructor and the learning objectives on each cover page.\n'
     + 'Unzip the course outline .docx and parse it:\n'
     + '  unzip -q "<Managing outline>.docx" -d work/managing/outline\n'
@@ -92,21 +95,28 @@ function stripVerdict(fb) {
   return out;
 }
 
-// "M1L3V1" -> "Refer to Module 1 Lesson 3 Video: The Employer’s Duty to Provide a Safe Workplace"
+// "M1L3V1" -> "Refer to Module 1 Lesson 3 Video 1: The Employer’s Duty to Provide a Safe Workplace"
+// "M1L3V1" -> "Module 1 Lesson 3 Video 1". Throws on anything else, so a malformed mapping
+// cannot reach the import section half-spelled.
+function spellMapping(mapped) {
+  const m = /^M(\d+)L(\d+)V(\d+)$/.exec(mapped);
+  if (!m) throw new Error('Mapping is not M<x>L<y>V<z>: ' + mapped);
+  return `Module ${m[1]} Lesson ${m[2]} Video ${m[3]}`;
+}
 function referLine(mapped) {
   const v = VIDEOS[mapped];
   if (!v) throw new Error('No video in outline for mapping ' + mapped);
-  // Format for this course: "Refer to M1L1V1: <video name>".
+  // Format for this course: "Refer to Module 1 Lesson 1 Video 1: <video name>", no brackets.
   // Video title passes through verbatim — no whitespace normalisation.
   //
-  // An EMPTY title degrades to the bare code rather than writing "Refer to M1L1V1: ". The
+  // An EMPTY title degrades to the bare code rather than writing "Refer to Module 1 Lesson 1 Video 1: ". The
   // colon-with-nothing-after-it is the worse failure of the two: it reads as a truncation
   // bug to a learner, where the bare code reads as a deliberate short reference. This fires
   // only when outline.json carries no title for the code — see the note in that file. The
   // titles are the one thing a real outline adds to the import section, so a build that hits
   // this path is a provisional build, and the run says so at the end.
-  if (!String(v.video || '').trim()) { untitled.add(mapped); return `Refer to ${mapped}`; }
-  return `Refer to ${mapped}: ${v.video}`;
+  if (!String(v.video || '').trim()) { untitled.add(mapped); return `Refer to ${spellMapping(mapped)}`; }
+  return `Refer to ${spellMapping(mapped)}: ${v.video}`;
 }
 
 // ---------- OOXML helpers ----------
@@ -308,14 +318,31 @@ function buildBody(mo) {
     for (const o of q.options) {
       const star = o.letter === q.correct ? '*' : '';
       P.push(para([[`${star}${o.letter}: ${o.text}`]]));
-      // Required layout — explanation and bracketed reference on ONE line:
-      //   Feedback: <explanation> (Refer to Module X Lesson Y Video: <title>)
-      // This is also the safest possible form for the importer: one paragraph, one run,
-      // no line breaks at all, matching Coursera's own convention of putting the review
-      // pointer inline in the feedback sentence.
+      // Explanation, then the bracketed reference as its OWN paragraph directly below it,
+      // with zero spacing so it sits tight under the explanation:
+      //   Feedback: <explanation>
+      //   Refer to Module 1 Lesson 1 Video 1: <title>
+      //
+      // Settled by an upload of src/managing-break-probe.js (2026-09-28), which tried ten
+      // encodings in one document. Every <w:br/> variant — in one run, in its own run, typed
+      // textWrapping, a <w:cr/> — came back from Coursera as several blank rows with stray
+      // spaces before "(Refer". Only a separate paragraph (E5 zero-spaced, E8 default)
+      // imported as one clean line break, and both kept the question. That overturns the
+      // older note that a free-standing "Refer to ..." paragraph rejects the question — at
+      // least when it follows its Feedback: paragraph with nothing between.
+      //
+      // No brackets and the mapping spelled out, by request (2026-09-28); the probe above
+      // tested the bracketed form, so import one module to confirm this one.
+      // --no-br restores the single-line form: "Feedback: <explanation> Refer to ...".
       // Explanation passes through verbatim — spacing inside it is preserved exactly.
-      const fbText = 'Feedback: ' + stripVerdict(q.feedback[o.letter] || '') + ' (' + refer + ')';
-      P.push(para([[fbText]]));
+      const fbBody = 'Feedback: ' + stripVerdict(q.feedback[o.letter] || '');
+      const fbRef = refer;
+      if (REF_OWN_LINE) {
+        P.push(para([[fbBody]]));
+        P.push(para([[fbRef]], { tight: true }));
+      } else {
+        P.push(para([[fbBody + ' ' + fbRef]]));
+      }
       P.push(blank());
     }
   }
@@ -522,7 +549,7 @@ if (stageReady) fs.rmSync(stage, { recursive: true, force: true });
 
 if (untitled.size) {
   console.log(`\n⚠  PROVISIONAL BUILD — ${untitled.size} mapping(s) have no video title in the outline,`);
-  console.log('   so their feedback ends "(Refer to M1L1V1)" rather than naming the video. Every');
+  console.log('   so their feedback ends "Refer to Module 1 Lesson 1 Video 1" rather than naming the video. Every');
   console.log('   question, option and explanation is complete; only the reference is short.');
   console.log('   Supply a real outline.json and rebuild to fill the titles in.');
 }

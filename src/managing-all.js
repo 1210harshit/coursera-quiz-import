@@ -17,6 +17,9 @@ const path = require('path');
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const W = path.join(SP, 'managing');
 const report = process.argv.includes('--report');
+// Forwarded to the builders AND the verifiers — they must agree on the feedback layout
+// or every comparison fails. See managing-build.js on the feedback line.
+const passThrough = process.argv.includes('--no-br') ? ['--no-br'] : [];
 const t0 = Date.now();
 
 // A stage that fails calls process.exit(); that must end the whole run, not just the stage,
@@ -45,10 +48,10 @@ const stages = report
   : [
       ['managing-parse-quiz.js',      [], path.join(W, 'quiz.json')],
       ['managing-parse-practice.js',  [], path.join(W, 'practice.json')],
-      ['managing-build.js',           [path.join(W, 'dist')]],
-      ['managing-practice-build.js',  [path.join(W, 'dist-practice')]],
-      ['managing-verify.js',          [path.join(W, 'dist')]],
-      ['managing-practice-verify.js', [path.join(W, 'dist-practice')]],
+      ['managing-build.js',           [path.join(W, 'dist'), ...passThrough]],
+      ['managing-practice-build.js',  [path.join(W, 'dist-practice'), ...passThrough]],
+      ['managing-verify.js',          [path.join(W, 'dist'), ...passThrough]],
+      ['managing-practice-verify.js', [path.join(W, 'dist-practice'), ...passThrough]],
     ];
 
 for (const [script, args, out] of stages) {

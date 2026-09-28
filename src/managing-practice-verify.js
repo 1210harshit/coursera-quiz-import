@@ -16,15 +16,27 @@ const dec = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g
 const stripVerdict = fb =>
   String(fb).replace(/^(?:\((?:Correct|Incorrect)\)|(?:Correct|Incorrect)[.:,!])\s*/i, '');
 
+// "M1L3V1" -> "Module 1 Lesson 3 Video 1". Throws on anything else, so a malformed mapping
+// cannot reach the import section half-spelled.
+function spellMapping(mapped) {
+  const m = /^M(\d+)L(\d+)V(\d+)$/.exec(mapped);
+  if (!m) throw new Error('Mapping is not M<x>L<y>V<z>: ' + mapped);
+  return `Module ${m[1]} Lesson ${m[2]} Video ${m[3]}`;
+}
 const referLine = m => {
   const v = VIDEOS[m];
   // Mirrors managing-practice-build.js, degradation included. The two must stay identical
   // or every feedback comparison below fails.
-  if (!String(v.video || '').trim()) return `Refer to ${m}`;
-  return `Refer to ${m}: ${v.video}`;
+  if (!String(v.video || '').trim()) return `Refer to ${spellMapping(m)}`;
+  return `Refer to ${spellMapping(m)}: ${v.video}`;
 };
 
 let fail = 0;
+// Must match how managing-build.js was run — see the note on its feedback line.
+const REF_OWN_LINE = !process.argv.includes('--no-br');
+// Separator between explanation and reference once the two paragraphs are rejoined below.
+const SEP = REF_OWN_LINE ? '\n' : ' ';
+
 const bad = m => { console.log('   FAIL: ' + m); fail++; };
 
 for (const mo of mods) {
@@ -129,13 +141,27 @@ for (const mo of mods) {
     if (/importable content starts here|end of importable content/i.test(l))
       bad(`prose collides with a marker string at line ${i}: "${l.slice(0, 70)}"`);
   });
-  const secPairs = lines.slice(s + 1, e)
-    .map((l, i) => ({ l, x: xmls[s + 1 + i] }))
-    .filter(p => p.l);
+  // Under the default layout each "Refer to Module ..." is its own paragraph, and it must sit
+  // IMMEDIATELY after its Feedback: paragraph — no blank paragraph between, which the
+  // importer would read as the end of the feedback. Fold each such pair back into one logical
+  // line joined by SEP, so every per-option check below reads one feedback line either way.
+  // A reference paragraph anywhere else is left unfolded, and the grammar check rejects it.
+  const rawPairs = lines.slice(s + 1, e).map((l, i) => ({ l, x: xmls[s + 1 + i] }));
+  const folded = [];
+  rawPairs.forEach(p => {
+    const prev = folded[folded.length - 1];
+    if (REF_OWN_LINE && /^Refer to Module /.test(p.l) && prev && /^Feedback: /.test(prev.l)) {
+      if (!/w:after="0"/.test(p.x)) bad(`reference paragraph is not zero-spaced: "${p.l.slice(0, 60)}"`);
+      prev.l += SEP + p.l;
+      prev.x += p.x;
+    } else folded.push({ ...p });
+  });
+  const secPairs = folded.filter(p => p.l);
   const sec = secPairs.map(p => p.l);
 
-  // Nothing inside the importable region may carry an intra-paragraph line break:
-  // every logical line must be its own paragraph, exactly as the importer expects.
+  // Nothing inside the importable region may carry an intra-paragraph line break: every
+  // logical line is its own paragraph. A <w:br/> in a Feedback: paragraph was tried and
+  // Coursera rendered it as several blank rows — see managing-build.js on the feedback line.
   secPairs.forEach((p, i) => {
     if (/<w:br\b/.test(p.x)) bad(`line break inside import section at line ${i}: "${p.l.slice(0, 60)}"`);
   });
@@ -188,26 +214,34 @@ for (const mo of mods) {
       if (opts[oi] !== wantOpt)
         bad(`${tag} option ${o.letter} mismatch\n      got:  ${opts[oi]}\n      want: ${wantOpt}`);
 
-      // required shape: ONE line — "Feedback: <explanation> (Refer to M1L1V1: ...)"
-      const wantFb = 'Feedback: ' + stripVerdict(src.feedback[o.letter]) + ' (' + wantRef + ')';
+      // Required shape, matching whichever form the builder was run in. SEP is the single
+      // separator between the explanation and its reference: \n where the reference
+      // paragraph was folded onto this one above, or one space under --no-br.
+      //
+      //   Feedback: <explanation>
+      //   Refer to Module 1 Lesson 1 Video 1: ...
+      const wantFb = 'Feedback: ' + stripVerdict(src.feedback[o.letter]) + SEP + wantRef;
       if (fbs[oi] !== wantFb) {
         bad(`${tag} feedback ${o.letter} mismatch\n      got:  ${JSON.stringify(fbs[oi])}\n      want: ${JSON.stringify(wantFb)}`);
       } else {
-        if (fbs[oi].includes('\n'))
-          bad(`${tag} feedback ${o.letter}: contains a line break — must be one line`);
-        if (!fbs[oi].endsWith(' (' + wantRef + ')'))
-          bad(`${tag} feedback ${o.letter}: bracketed reference not at end, separated by one space`);
-        if (!/^Refer to M\d+L\d+V\d+(?:: \S.*)?$/.test(wantRef))
+        const breaks = (fbs[oi].match(/\n/g) || []).length;
+        if (breaks !== (REF_OWN_LINE ? 1 : 0))
+          bad(`${tag} feedback ${o.letter}: ${breaks} line break(s), expected ${REF_OWN_LINE ? 1 : 0}`);
+        if (!fbs[oi].endsWith(SEP + wantRef))
+          bad(`${tag} feedback ${o.letter}: reference not at end, separated by ${REF_OWN_LINE ? 'its own paragraph' : 'one space'}`);
+        if (!/^Refer to Module \d+ Lesson \d+ Video \d+(?:: \S.*)?$/.test(wantRef))
           bad(`${tag} feedback ${o.letter}: bad reference line "${wantRef}"`);
-        // brackets must be balanced and the reference fully enclosed
+        // Brackets, where a title carries them (e.g. "... Analyses (JHA)"), must balance.
         const opens = (fbs[oi].match(/\(/g) || []).length;
         const closes = (fbs[oi].match(/\)/g) || []).length;
         if (opens !== closes)
           bad(`${tag} feedback ${o.letter}: unbalanced brackets (${opens} open, ${closes} close)`);
-        // A video title may itself contain brackets (e.g. "... Analyses (JHA)"), so the
-        // wrapper may legitimately nest. Require the wrapper, not the absence of nesting.
-        if (!/\(Refer to M\d+L\d+V\d+(?:: .+)?\)$/.test(fbs[oi]))
-          bad(`${tag} feedback ${o.letter}: reference is not wrapped in brackets at the end`);
+        // The reference is unbracketed, spelled out, and ends the feedback; no short
+        // M1L1V1 code may survive anywhere in it.
+        if (!/(?:^|\n| )Refer to Module \d+ Lesson \d+ Video \d+(?:: .+)?$/.test(fbs[oi]))
+          bad(`${tag} feedback ${o.letter}: reference is not "Refer to Module X Lesson Y Video Z" at the end`);
+        if (/\(Refer to|\bM\d+L\d+V\d+\b/.test(fbs[oi]))
+          bad(`${tag} feedback ${o.letter}: bracketed or short-code reference left in -> "${fbs[oi].slice(-60)}"`);
         // no leftover verdict word at the start of the explanation
         if (/^Feedback:\s*(Correct|Incorrect)\b/i.test(fbs[oi]))
           bad(`${tag} feedback ${o.letter}: verdict word still present -> "${fbs[oi].slice(0, 50)}"`);
