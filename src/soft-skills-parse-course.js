@@ -67,74 +67,118 @@ const WRAPUP_MODULE = 'Course Wrap-Up and Next Steps';
 // to null, "Graded Assessment" does not match its /^graded\s*quiz/ pattern, and "Coach Dialogue"
 // would not reach the type this course wants.
 //
-// THIS MAPPING IS THE COURSE OWNER'S, NOT A DERIVATION. The right-hand column is the name of the
-// LEARNING ITEM TYPE IN COURSERA, given by the owner so the importer picks that exact type. Do
-// not substitute a "nearer" type because the bundled Course Template predates one of these —
-// the template's list is older than the platform's, and the owner's names are the current ones.
+// ============================================================================================
+// THE IMPORTER'S VOCABULARY IS CLOSED. This is the one thing to understand before editing the
+// right-hand column, and it took three uploads and 50 lost rows to establish.
 //
-// The first upload of this workbook lost 17 rows, and every one of them was a name that is not
-// Coursera's:
+// Coursera's importer accepts a fixed set of item-type strings and refuses everything else with
+// ITEM_TYPE_UNSET / "Invalid item type" — meaning it read NO type at all. It is not a verdict on
+// the item, and the workbook is never at fault: a refused cell is byte-identical in encoding and
+// style to an accepted one in the same upload. Three things that do NOT decide acceptance:
 //
-//   asked for   returned                                    corrected to
-//   ---------   ----------------------------------------    -------------------
-//   Quiz        "Item type Quiz is not supported"  (8)       Practice Assignment
-//   Quizzes     ITEM_TYPE_UNSET / "Invalid item type" (1)    Practice Assignment
-//   Dialogue    ITEM_TYPE_UNSET / "Invalid item type" (4)    Dialogue  (confirmed correct)
-//   Roleplay    ITEM_TYPE_UNSET / "Invalid item type" (4)    Roleplay  (confirmed correct)
+//   * the bundled Course Template's Ranges list. Practice Assignment is absent from it and
+//     imported 9 of 9; Graded Assessment is equally absent and was refused.
+//   * appending the type to the Ranges sheet. course-import-build.js does that and widens the
+//     dropdown; the workbook then opens cleanly in Excel and course-import-verify.js passes.
+//     Coursera ignores all of it.
+//   * how close the name looks. See the controlled experiment below.
 //
-// ITEM_TYPE_UNSET means Coursera read no type at all, which is what an unrecognised string
-// produces — not a verdict on the item. The workbook was never at fault: a Roleplay cell is
-// byte-identical in encoding and style to a Peer Review cell that imported in the same upload.
+// THE CONTROLLED EXPERIMENT. The same nine cells — A41, A61, A71, A94, A104, A127, A137, A160,
+// A170 — went up twice, in consecutive uploads of a structurally identical workbook:
 //
-// "Graded Assessment" also moves, from Assignment to Graded Assignment. Assignment did import,
-// so this is not a fix — it is the owner naming the type they actually want the item to be.
+//   upload 1   "Practice Assignment"   IMPORTED, 9 of 9
+//   upload 2   "Practice Assessment"   REFUSED,  9 of 9
+//
+// One word. That rules out formatting, encoding, the dropdown and row position, and it shows the
+// match is exact-string against a closed list. "Assignment" is in the vocabulary; "Assessment"
+// is not, in any position.
+//
+// FULL EVIDENCE, three uploads:
+//
+//   string                 result                                    where
+//   --------------------   ---------------------------------------   -----------------------
+//   Video                  imported                                  all three
+//   Reading                imported                                  all three
+//   Discussion Prompt      imported                                  all three
+//   Peer Review            imported                                  all three
+//   Assignment             imported                                  soft-skills
+//   Practice Assignment    imported, 9 of 9                           emotional-intelligence #1
+//   Quiz                   "Item type Quiz is not supported" (8)     soft-skills
+//   Quizzes                ITEM_TYPE_UNSET (1)                       soft-skills
+//   Dialogue               ITEM_TYPE_UNSET (4, 4, 4)                 all three
+//   Roleplay               ITEM_TYPE_UNSET (4, 4, 4)                 all three
+//   Graded Assignment      ITEM_TYPE_UNSET (4)                       emotional-intelligence #1
+//   Practice Assessment    ITEM_TYPE_UNSET (9)                       emotional-intelligence #2
+//   Graded Assessment      ITEM_TYPE_UNSET (4)                       emotional-intelligence #2
+//
+// CONSEQUENCE FOR TWO ITEM TYPES. Dialogue and Roleplay have been refused three times across two
+// courses. The importer has no string for either concept, so no workbook can create them and no
+// spelling fixes it. They are mapped below to the nearest type that has upload evidence, and the
+// item NAME still carries the intent ("Coach Dialogue: …"). If the course must genuinely hold a
+// Roleplay or Dialogue item, that has to be set in the Coursera UI after import — the importer
+// cannot do it.
+//
+// Every string in the right-hand column below now has upload evidence behind it. Do not
+// introduce one that does not; OBSERVED_IMPORTS is checked on every run.
+// ============================================================================================
 const EXTRA_ITEM_TYPES = [
   [/^infographic/i,                     'Reading'],
   [/^pre[-\s]?course\s*diagnostic/i,    'Reading'],
-  // The pre-course diagnostic. Not named explicitly by the owner; it is an ungraded,
-  // non-blocking, retakeable self-assessment, which is the same item a practice quiz is.
-  [/^interactive\s*assessment$/i,       'Practice Assignment'],
   [/^recommended\s*learning\s*path$/i,  'Reading'],
-  [/^coach\s*dialogue$/i,               'Dialogue'],
-  [/^practice\s*quiz$/i,                'Practice Assignment'],
-  [/^discussion\s*prompt$/i,            'Discussion Prompt'],
-  [/^hands[-\s]?on\s*lab$/i,            'Peer Review'],
-  [/^roleplay$/i,                       'Roleplay'],
   [/^the\s*part\s*of\s*tens$/i,         'Reading'],
   [/^cheat\s*sheet$/i,                  'Reading'],
+  // Ungraded, non-blocking, retakeable, one per lesson. "Practice Assignment" is the only
+  // practice-flavoured string with upload evidence — 9 of 9 on emotional-intelligence #1.
+  [/^practice\s*quiz$/i,                'Practice Assignment'],
+  [/^interactive\s*assessment$/i,       'Practice Assignment'],
+  // The graded module quiz. "Assignment" imported on soft-skills; both "Graded Assignment" and
+  // "Graded Assessment" were refused, so the qualifier is what the importer cannot read.
+  [/^graded\s*assessment$/i,            'Assignment'],
+  // Substitutions, not the owner's names — see CONSEQUENCE FOR TWO ITEM TYPES above.
+  // A coach dialogue asks the learner to describe a situation and set a goal, which is what a
+  // Discussion Prompt collects; a roleplay is applied practice, like the Hands-on Lab beside it.
+  [/^coach\s*dialogue$/i,               'Discussion Prompt'],
+  [/^roleplay$/i,                       'Peer Review'],
+  [/^hands[-\s]?on\s*lab$/i,            'Peer Review'],
   [/^course[-\s]?end\s*project$/i,      'Peer Review'],
-  [/^graded\s*assessment$/i,            'Graded Assignment'],
+  [/^discussion\s*prompt$/i,            'Discussion Prompt'],
 ];
 
-// The item types the bundled Course Template ships in its Ranges master list ($E$3:$E$11).
-// A type outside this set is not necessarily wrong — Coursera has item types the template
-// predates, and the owner may legitimately want one — but it IS the set that has been observed
-// to import. Anything else is reported on every run so a silent drop cannot happen twice:
-// course-import-build.js appends an unknown type to the Ranges sheet and the verifier then
-// passes, so without this notice a workbook that loses rows looks completely clean.
-const TEMPLATE_ITEM_TYPES = new Set([
-  'Video', 'Reading', 'Discussion Prompt', 'Graded Discussion Prompt', 'Programming',
-  'Peer Review', 'App item', 'Ungraded Lab', 'Assignment',
+// The only test that has ever predicted an import correctly: has this exact string been seen to
+// import? The bundled template's Ranges list does NOT predict it in either direction — Practice
+// Assignment is absent from that list and imported 9 of 9, Graded Assessment is absent and was
+// refused — so the template's list is not used as the gate. Upload evidence is.
+const OBSERVED_IMPORTS = new Set([
+  'Video',              // all three uploads
+  'Reading',            // all three uploads
+  'Discussion Prompt',  // all three uploads
+  'Peer Review',        // all three uploads
+  'Assignment',         // soft-skills
+  'Practice Assignment', // emotional-intelligence #1, 9 of 9
 ]);
-// Names this course has seen Coursera refuse, and what replaced them. Kept so a later edit that
-// reintroduces one is recognised as a regression rather than rediscovered on an upload.
-const REJECTED_BEFORE = {
-  Quiz: '"Item type Quiz is not supported" — replaced by Practice Assignment',
-  Quizzes: 'ITEM_TYPE_UNSET / "Invalid item type" — replaced by Practice Assignment',
+// Strings Coursera has been observed to REFUSE, with the count and upload. A type resolved into
+// one of these is a regression: it has already cost rows, and it will cost them again.
+const OBSERVED_REFUSED = {
+  Quiz: '"Item type Quiz is not supported" — soft-skills, 8 rows. The type WAS read and refused',
+  Quizzes: 'ITEM_TYPE_UNSET — soft-skills, 1 row',
+  Dialogue: 'ITEM_TYPE_UNSET — soft-skills 4 rows, emotional-intelligence #1 and #2 4 rows each (A57, A90, A123, A156). Refused three times',
+  Roleplay: 'ITEM_TYPE_UNSET — soft-skills 4 rows, emotional-intelligence #1 and #2 4 rows each (A74, A107, A140, A173). Refused three times',
+  'Graded Assignment': 'ITEM_TYPE_UNSET — emotional-intelligence #1, 4 rows (A75, A108, A141, A174)',
+  'Practice Assessment': 'ITEM_TYPE_UNSET — emotional-intelligence #2, 9 rows. The SAME cells imported as "Practice Assignment" one upload earlier',
+  'Graded Assessment': 'ITEM_TYPE_UNSET — emotional-intelligence #2, 4 rows (A75, A108, A141, A174)',
 };
 // type -> the outline label that produced it, for the notice emitted at the end.
 const offTemplate = new Map();
+const refused = new Map();
 function resolveType(label) {
   const l = clean(label || '');
   let type = null;
   for (const [re, t] of EXTRA_ITEM_TYPES) if (re.test(l)) { type = t; break; }
   if (!type) type = itemType(l);
-  // Reported, not fatal: the owner chooses the type, and Coursera has items the bundled template
-  // predates. But a type outside the template's list has already cost this course 17 silently
-  // dropped rows, so every run says so rather than letting the next upload discover it.
-  if (type && !TEMPLATE_ITEM_TYPES.has(type) && !offTemplate.has(type)) {
-    offTemplate.set(type, l);
-  }
+  // A string already observed to be refused is reported separately and much louder than a merely
+  // untested one: those rows are not at risk, they are known to drop.
+  if (type && OBSERVED_REFUSED[type] && !refused.has(type)) refused.set(type, l);
+  else if (type && !OBSERVED_IMPORTS.has(type) && !offTemplate.has(type)) offTemplate.set(type, l);
   return type;
 }
 
@@ -323,19 +367,24 @@ if (!course.sme) {
   warnings.push('no "Lead Instructor:" line in the outline — the course SME is left blank');
 }
 
-// Item types outside the bundled template's list. Named on every run, with the message Coursera
-// returned last time where there is one, because the failure mode is a SILENT drop: the build
-// appends the type to the Ranges sheet, the verifier passes, and only the upload reveals the
-// loss. See the note above EXTRA_ITEM_TYPES.
+// Item types with no evidence of importing. Named on every run because the failure mode is a
+// SILENT drop: the build appends the type to the Ranges sheet, the verifier passes, and only the
+// upload reveals the loss. See the note above EXTRA_ITEM_TYPES.
+const rowsOf = type => course.modules.flatMap(m => m.lessons.flatMap(l => l.items))
+  .filter(i => i.type === type).length;
+// Known-bad. Not a risk to weigh — these rows have already been dropped on a real upload.
+for (const [type, label] of refused) {
+  const n = rowsOf(type);
+  warnings.push(`REGRESSION: item type "${type}" (from "${label}", ${n} row${n === 1 ? '' : 's'}) has `
+    + `already been REFUSED by Coursera: ${OBSERVED_REFUSED[type]}. These rows will be dropped `
+    + 'again. Map the label to a string in OBSERVED_IMPORTS instead.');
+}
+// Untested. A real risk, but not a known loss.
 for (const [type, label] of offTemplate) {
-  const n = course.modules.flatMap(m => m.lessons.flatMap(l => l.items))
-    .filter(i => i.type === type).length;
-  warnings.push(`item type "${type}" (from "${label}", ${n} row${n === 1 ? '' : 's'}) is not in the `
-    + 'bundled Course Template\x27s list'
-    + (REJECTED_BEFORE[type] ? `, and Coursera refused it on a previous upload: ${REJECTED_BEFORE[type]}. `
-        + 'If it is refused again, vary the SPELLING — the cell itself is written correctly.'
-      : '. It has not been import-tested.')
-    + ' Import ONE module and check the item count before relying on the workbook.');
+  const n = rowsOf(type);
+  warnings.push(`item type "${type}" (from "${label}", ${n} row${n === 1 ? '' : 's'}) has never been `
+    + 'seen to import. Coursera\x27s importer matches the exact string against a closed list, so an '
+    + 'unseen name is a coin toss. Import ONE module and compare the item count.');
 }
 
 // The outline promises "one embedded question per instructional video" against its 16 topic

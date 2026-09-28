@@ -15,6 +15,7 @@ const SLUG = 'genai-marketing';
 const blocks = readBlocks(path.join(SP, SLUG, 'outline', 'word', 'document.xml'));
 
 const warnings = [];
+let roleplayRemapped = 0;
 const ROLE_PLAY_DEFAULT = 12;   // outline gives ranges; midpoint is applied by minutes()
 
 // PLACEMENT
@@ -108,12 +109,34 @@ for (const b of blocks) {
 
   for (const cells of rows.slice(1)) {
     const [label, title, format, desc, est, link] = cells.map(cellText);
-    const type = itemType(label);
+    let type = itemType(label);
     if (!type) { warnings.push(`unrecognised item label "${label}" — skipped`); continue; }
+
+    // "Roleplay" is REFUSED by Coursera's importer. lib-outline-course still maps role plays to
+    // it on the belief that it is a real platform item type that merely postdates the bundled
+    // template; three uploads across soft-skills and emotional-intelligence disproved that —
+    // every Roleplay row came back ITEM_TYPE_UNSET, meaning the importer read no type at all and
+    // dropped the row silently. There is no known accepted spelling for the concept.
+    //
+    // It is remapped HERE rather than in lib-outline-course because that function is shared, and
+    // six already-delivered courses (ai-products, cstp-course-2, digital-transformation,
+    // genai-pm, pharma, shopify) still emit Roleplay through it. Changing the shared function
+    // would silently alter six workbooks that have already shipped; that is the course owner's
+    // call, not this parser's. Peer Review is the target because it has upload evidence and is
+    // what the Dummies courses settled on — a roleplay is applied practice, like the hands-on lab
+    // beside it. The item NAME still carries the intent, and the real type can be set in the
+    // Coursera UI after import.
+    const wasRoleplay = type === 'Roleplay';
+    if (wasRoleplay) {
+      type = 'Peer Review';
+      roleplayRemapped++;
+    }
 
     let min = minutes(est);
     if (min === null) {
-      min = type === 'Roleplay' ? ROLE_PLAY_DEFAULT : 5;
+      // Keyed off what the SOURCE said, not the remapped type: a role play still runs to the
+      // role-play default even though it now imports as a Peer Review.
+      min = wasRoleplay ? ROLE_PLAY_DEFAULT : 5;
       warnings.push(`${label} "${title || desc.slice(0, 40)}": no Est. Time in source, assumed ${min} mins`);
     }
 
@@ -170,6 +193,11 @@ for (const m of course.modules) {
   }
   delete m.alignedLO;
   for (const l of m.lessons) delete l.description;
+}
+
+if (roleplayRemapped) {
+  warnings.push(`${roleplayRemapped} "Role Play" row(s) mapped to Peer Review: Coursera refuses the type `
+    + `"Roleplay" (ITEM_TYPE_UNSET on three uploads). The item names still say role play.`);
 }
 
 writeJson(course, warnings);
