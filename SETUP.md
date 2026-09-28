@@ -157,7 +157,16 @@ Its document assembly and its checks each live in one shared module —
 entry points, because three copies of a four-hundred-line builder is how a fix lands in two of
 them. Change the reference format in the builder and the verifier together.
 
-This course has **no course-content import**: only the quiz documents were asked for.
+Neither `deploying-ai-agents` nor `bpa-course-1` has a **course-content import**: for both, the
+course owner asked for the quiz documents only, so neither has a `*-parse-course.js` and neither
+produces an `.xlsx`. The syllabus is parsed for the quiz pipeline alone — it is what resolves
+each question's cited asset to a module and lesson.
+
+`bpa-course-1` is Business Process Automation, Course 1 (Foundations and High-Impact Process
+Identification): 4 graded quizzes, 15 lesson practice quizzes and a final exam, 125 questions.
+It is `deploying-ai-agents`' pipeline copied and adapted; what differs is listed in §6's
+source-shape table, and its reference style is the GitHub format for every document rather than
+one.
 
 ### Available slugs
 
@@ -165,7 +174,7 @@ This course has **no course-content import**: only the quiz documents were asked
 `genai-appdev` · `management-mastery` · `pm-course-1` · `pm-course-2` · `pm-course-3` ·
 `cstp-course-1` · `google-ads` · `google-ads-final` · `paid-social` · `paid-ads-11` ·
 `ai-toolkit-v2` · `digital-marketing` · `shopify` · `websites-15` · `ai-products` ·
-`soft-skills` · `digital-transformation` · `deploying-ai-agents`
+`soft-skills` · `digital-transformation` · `deploying-ai-agents` · `bpa-course-1`
 
 `google-ads-final` is the rewritten assessment for the same course as `google-ads`, against the
 same outline. It supersedes it: per-option explanations rather than one shared across four, a
@@ -483,6 +492,11 @@ grep -c '<w:br'    work/<slug>/quiz/word/document.xml   # line breaks inside par
 | The answer key implied only by the feedback verdict (`Correct.` / `Wrong.`), stars absent or partial | `deploying-ai-agents` |
 | One file per lesson AND per module AND a course-wide final exam, seventeen in all | `deploying-ai-agents` |
 | `Asset:` lines sitting ABOVE their question header in one file and below it in the rest | `deploying-ai-agents` |
+| The key marked with a **double** asterisk (`**B:`), markdown-style rather than Coursera's single `*` | `bpa-course-1` |
+| An option and its `Feedback:` run together on ONE line | `bpa-course-1` |
+| Assets cited by ordinal (`Lab 2`) rather than by title | `bpa-course-1` |
+| Asset citations that are a truncated PREFIX of the outline's title | `bpa-course-1` |
+| Filenames naming the lesson as a code (`M3L4`), inconsistently spaced, and two naming nothing but a production code | `bpa-course-1` |
 
 ### When a source states its mapping twice
 

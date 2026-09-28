@@ -1,4 +1,4 @@
-// Verifier for the Deploying and Orchestrating AI Agents import documents. Shared by the
+// Verifier for the Business Process Automation (Course 1) import documents. Shared by the
 // graded quizzes, the lesson practice quizzes and the final exam, because all three are the
 // same document and a check that only runs on one family is a check that does not run.
 //
@@ -22,7 +22,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { referSuffix, referText, refString } = require('./deploying-ai-agents-lib');
+const { referSuffix, referText, refString } = require('./bpa-course-1-lib');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const dec = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
@@ -43,10 +43,10 @@ const dec = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g
 // here is what catches it.
 const kindLabel = numberVideos => 'Day-in-the-Life Video|Downloadable Resource|Cumulative Project|'
   + 'Discussion Prompt|Expert Viewpoint|Practice Quiz|SME Interview|Graded Quiz|Demo Video|'
-  + `Final Exam|Reading|Video${numberVideos ? ' \\d+' : ''}|Lab`;
+  + `Case Study|Final Exam|Reading|Video${numberVideos ? ' \\d+' : ''}|Lab`;
 const oneRef = st => new RegExp(`^Module \\d+ Lesson \\d+ (?:${kindLabel(st.numberVideos)}): \\S`);
 // How the reference closes the feedback line, one pattern per layout. Which layout a given
-// document uses is decided in deploying-ai-agents-lib.js and is checked here, not assumed —
+// document uses is decided in bpa-course-1-lib.js and is checked here, not assumed —
 // the point is that a document silently switching form fails.
 //
 //   own-line   … explanation.⏎Refer to Module 1 Lesson 3 Video 1: <title>

@@ -36,8 +36,16 @@ const { lines } = require('./lib-lines');
 // The source mixes hyphen and en dash; both mean the same thing.
 const Q_HEAD = /^Question\s+(\d+)\s*[-–—]\s*(.+)$/i;
 const ASSET = /^Asset\s*:\s*(.+)$/i;
-// "A:", "*A:", "A." — see the note above about the one "A." in the Module 3 graded quiz.
-const OPTION = /^(\*?)\s*([A-F])\s*[:.]\s+(.+)$/;
+// "A:", "*A:", "**A:", "A." — four spellings of the same thing across these sources.
+//
+// The DOUBLE asterisk is the one that matters. Business Process Automation marks its key with
+// "**B:", a markdown bold marker rather than Coursera's single-star convention, on twelve of
+// its twenty files. Accepting only a single star does not merely miss the marker — the whole
+// option LINE stops matching, so the question silently arrives with three options and no key,
+// and the feedback beneath it attaches to nothing. Any run of asterisks is therefore taken as
+// the marker, and the builder writes Coursera's single star regardless of how many the source
+// used.
+const OPTION = /^(\*+)?\s*([A-F])\s*[:.]\s+(.+)$/;
 const FEEDBACK = /^Feedback\s*[:–-]\s*(.+)$/i;
 // The verdict word the source opens every explanation with. Coursera already tells the learner
 // whether the option they chose was right, so the word is consumed as the key and removed from
@@ -188,7 +196,10 @@ function readQuizDoc(docxDir, label) {
   // structural line that follows it.
   const los = [];
   {
-    const j = head.findIndex(l => /learning\s*objectives?\s*addressed/i.test(l));
+    // "…learning objectives addressed in this quiz:" is the usual heading, but the Business
+    // Process Automation final exam writes "Learning Objectives for the Final Exam", so the
+    // preposition is part of the pattern rather than the word "addressed" alone.
+    const j = head.findIndex(l => /learning\s*objectives?\s*(addressed|for\b)/i.test(l));
     if (j < 0) issues.push('no "learning objectives addressed in this quiz" section');
     else {
       for (let k = j + 1; k < head.length; k++) {
@@ -198,7 +209,11 @@ function readQuizDoc(docxDir, label) {
         if (SETTING_LABELS.some(([, re]) => re.test(l.replace(/:.*$/, '').trim()))) break;
         if (NOISE.test(l)) break;
         if (/^By the end/i.test(l)) continue;
-        los.push(l.replace(/^[•○▪·\-\s]+/, '').trim());
+        const t = l.replace(/^[•○▪·\-\s]+/, '').trim();
+        // A stray "." sits between the objectives and the Course: line in one source. A line
+        // with no letters in it is punctuation, not an objective.
+        if (!/[A-Za-z]/.test(t)) continue;
+        los.push(t);
       }
       if (!los.length) issues.push('the learning-objectives section lists nothing');
     }
@@ -277,12 +292,37 @@ function readQuizDoc(docxDir, label) {
     // option test is safe here; but a prompt that has not been seen yet takes precedence,
     // because every question states its prompt before its first option.
     if (op && q.prompt.length) {
+      // AN OPTION AND ITS FEEDBACK CAN SHARE A LINE. Six of these questions run the two
+      // together — "A: <option text>.   Feedback: Incorrect. <explanation>" — where the rest
+      // put them in separate paragraphs. Taking the whole line as the option text would leave
+      // the option carrying the answer key in its own wording and the question with no
+      // feedback at all, which is how this first surfaced: a build that stopped on "no
+      // feedback". Split on the label and handle both halves here.
+      let text = clean(op[3]);
+      let inlineFb = null;
+      const split = /\s+Feedback\s*[:–-]\s*(.+)$/i.exec(text);
+      if (split) {
+        inlineFb = clean(split[1]);
+        text = clean(text.slice(0, split.index));
+      }
       pendingOption = {
-        letter: op[2], starred: !!op[1], text: clean(op[3]),
+        letter: op[2], starred: !!op[1], text,
         correct: null, text_feedback: '',
       };
       if (op[1]) q.starred.push(op[2]);
       q.options.push(pendingOption);
+      if (inlineFb) {
+        const v = VERDICT.exec(inlineFb);
+        if (!v) {
+          issues.push(`Q${q.num} option ${pendingOption.letter}: feedback shares the option's line `
+            + 'and opens with no Correct/Wrong verdict, so this option cannot be keyed');
+          pendingOption.text_feedback = inlineFb;
+        } else {
+          pendingOption.correct = IS_CORRECT.test(v[1]);
+          pendingOption.text_feedback = clean(inlineFb.slice(v[0].length));
+        }
+        pendingOption = null;
+      }
       continue;
     }
 
