@@ -251,6 +251,23 @@ function verifyAll(OUT, files, summaryNoun) {
       if (opts.length !== src.options.length) bad(`${tag} has ${opts.length} options`);
       if (fbs.length !== src.options.length) bad(`${tag} has ${fbs.length} feedback blocks`);
 
+      // Two options with the SAME text. Coursera refuses the question outright with
+      // "Duplicate answers are not allowed", and nothing else here would catch it: the counts,
+      // the key, the feedback blocks and the reference are all correct. Checked on the BUILT
+      // document, not only at parse time, so it cannot reach an upload.
+      {
+        const seenOpt = new Map();
+        opts.forEach(l => {
+          const t = l.replace(/^\*?[A-F]:\s*/, '').replace(/\s+/g, ' ').trim().toLowerCase();
+          const letter = (/^\*?([A-F]):/.exec(l) || [, '?'])[1];
+          if (!t) return;
+          if (seenOpt.has(t)) {
+            bad(`${tag} options ${seenOpt.get(t)} and ${letter} have identical text — Coursera `
+              + 'rejects the question ("Duplicate answers are not allowed")');
+          } else seenOpt.set(t, letter);
+        });
+      }
+
       const starredOpts = opts.filter(l => l.startsWith('*'));
       if (starredOpts.length !== 1) bad(`${tag} has ${starredOpts.length} starred answers`);
       else if (starredOpts[0][1] !== src.correct)

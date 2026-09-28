@@ -360,6 +360,27 @@ function readQuizDoc(docxDir, label) {
         + 'one that says "Correct" — the two disagree and this question needs a human decision');
       qq.correct = null;
     }
+    // TWO OPTIONS WITH THE SAME TEXT. Coursera rejects the question outright — "Duplicate
+    // answers are not allowed" — so this is a build-stopping defect, not a style note. It is
+    // also invisible in every other check: the question has four options, one key, four
+    // feedback blocks, and resolves its reference. The Business Process Automation Module 4
+    // Lesson 1 practice quiz shipped with all four options identical in all five questions,
+    // and Coursera refused the whole file.
+    //
+    // It cannot be repaired here. Distinct feedback under identical options means the
+    // distractors were never written, and inventing them is authoring assessment content.
+    {
+      const seen = new Map();
+      for (const o of qq.options) {
+        const k = o.text.replace(/\s+/g, ' ').trim().toLowerCase();
+        if (!k) continue;
+        if (seen.has(k)) {
+          issues.push(`Q${qq.num}: options ${seen.get(k)} and ${o.letter} have the same text. `
+            + 'Coursera rejects the question ("Duplicate answers are not allowed"); the source '
+            + 'needs distinct distractors before this can be built.');
+        } else seen.set(k, o.letter);
+      }
+    }
     if (!/multiple choice/i.test(qq.type)) {
       issues.push(`Q${qq.num}: question type is "${qq.type}", not multiple choice — this builder `
         + 'only writes single-answer multiple choice');
