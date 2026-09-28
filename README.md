@@ -75,24 +75,33 @@ Feedback: <explanation> Refer to Module 1 Lesson 1 Reading: FAQ: When Two Agents
 Never `FAQ:` as a label. The verifier's list of accepted labels deliberately omits it, so a
 regression fails the build rather than shipping.
 
-#### Bracketed or not
+#### Same line, or its own line
 
-Both forms are in use, and which one a document gets is decided per document:
+Both layouts are in use, and which one a document gets is decided per document:
 
-| | Reference form |
+| | Reference layout |
 |---|---|
-| Default, everywhere | `… explanation. (Refer to Module 1 Lesson 3 Video: <title>)` |
-| Documents listed in `PLAIN_EXCEPTIONS` | `… explanation. Refer to Module 1 Lesson 3 Video: <title>` |
+| Default, everywhere | `… explanation. (Refer to Module 1 Lesson 3 Video: <title>)` on one line |
+| Documents listed in `OWN_LINE_EXCEPTIONS` | the reference as a **separate, zero-spaced paragraph** directly below the feedback, unbracketed |
 
-As of 2026-09-28 the only unbracketed document is the `deploying-ai-agents` Module 1 Lesson 3
-practice quiz, which the course owner asked to see in the plain form before deciding whether it
-goes across the set.
+```
+Feedback: <explanation>
+Refer to Module 1 Lesson 3 Video: Testing the Workflow as a Whole
+```
 
-The decision lives in ONE place — `PLAIN_BY_DEFAULT` and `PLAIN_EXCEPTIONS` in
+A separate paragraph is the only clean way to do this — see the constraints table above. Never
+a `<w:br/>`, and never with a blank paragraph between the two.
+
+As of 2026-09-28 the only own-line document is the `deploying-ai-agents` Module 1 Lesson 3
+practice quiz, which the course owner asked to see in that form before deciding whether it goes
+across the set.
+
+The decision lives in ONE place — `OWN_LINE_BY_DEFAULT` and `OWN_LINE_EXCEPTIONS` in
 `deploying-ai-agents-lib.js` — because the builder and the verifier both read it and must
-agree. To adopt the plain form for a whole course, flip `PLAIN_BY_DEFAULT` to `true` and empty
-the exception list. The verifier checks each document against the style it was built for, so a
-document in the wrong form fails rather than shipping.
+agree. To adopt it for a whole course, flip `OWN_LINE_BY_DEFAULT` to `true` and empty the
+exception list. The verifier folds each reference paragraph back onto the feedback line above
+it, fails one that is not zero-spaced or not adjacent, and checks every document against the
+layout it was built for — so a document in the wrong layout fails rather than shipping.
 
 Everything else about the line — full words, no video number, label by item type — is common to
 both forms.

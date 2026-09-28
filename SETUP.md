@@ -395,15 +395,18 @@ Sources vary wildly, so a new course means a new parser. Budget most of your tim
 this way — module and lesson spelled out in full words, the asset kind carrying no number:
 
 ```
-default:  Feedback: <explanation> (Refer to Module 1 Lesson 3 Video: Testing the Workflow as a Whole)
-plain:    Feedback: <explanation> Refer to Module 1 Lesson 3 Video: Testing the Workflow as a Whole
+default:   Feedback: <explanation> (Refer to Module 1 Lesson 3 Video: Testing the Workflow as a Whole)
+
+own-line:  Feedback: <explanation>
+           Refer to Module 1 Lesson 3 Video: Testing the Workflow as a Whole
 ```
 
-The brackets are the ONLY difference, and the choice is per document, set in
-`PLAIN_BY_DEFAULT` / `PLAIN_EXCEPTIONS` in `deploying-ai-agents-lib.js` — one definition that
-the builder and the verifier both read, so they cannot drift. Today only one document is
-plain: the `deploying-ai-agents` Module 1 Lesson 3 practice quiz, pending the course owner's
-review of the form.
+The own-line form is a separate, ZERO-SPACED paragraph directly under the feedback — never a
+`<w:br/>`, and never with a blank paragraph between; see the rules table in §7. The choice is
+per document, set in `OWN_LINE_BY_DEFAULT` / `OWN_LINE_EXCEPTIONS` in
+`deploying-ai-agents-lib.js` — one definition that the builder and the verifier both read, so
+they cannot drift. Today only one document is own-line: the `deploying-ai-agents` Module 1
+Lesson 3 practice quiz, pending the course owner's review of the form.
 
 `Reading:`, `Lab:` and `Discussion Prompt:` take the same shape when a question is written
 from one of those rather than from a video; two items go in one bracket separated by `; `.

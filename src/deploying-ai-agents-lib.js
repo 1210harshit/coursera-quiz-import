@@ -26,36 +26,53 @@ const DOCS = path.join(SP, SLUG, 'docs');
 // Two forms of the same reference:
 //
 //   bracketed   Feedback: <explanation> (Refer to Module 1 Lesson 3 Video: <title>)
-//   plain       Feedback: <explanation> Refer to Module 1 Lesson 3 Video: <title>
 //
-// The course owner asked to see the plain form on ONE document first — the Module 1 Lesson 3
-// practice quiz — before it goes across the set, so that is the only exception and everything
-// else keeps the bracketed form it shipped with.
+//   own-line    Feedback: <explanation>
+//               Refer to Module 1 Lesson 3 Video: <title>
+//
+// The own-line form is a SEPARATE, ZERO-SPACED PARAGRAPH sitting directly below the feedback —
+// not a <w:br/> inside it. That distinction is not cosmetic and was not guessed: an upload of
+// managing-break-probe.js (PR #1, 2026-09-28) tried ten encodings in one document. Every
+// <w:br/> variant imported but came back rendered as several blank rows with stray spaces;
+// only a separate paragraph gave one clean break with the question still importing. A blank
+// paragraph between the two, however, still ends the feedback and rejects the question, so
+// "directly below" is part of the rule, and the verifier checks it.
+//
+// The course owner asked to see this on ONE document first — the Module 1 Lesson 3 practice
+// quiz — before it goes across the set, so that is the only exception and everything else
+// keeps the bracketed form it shipped with.
 //
 // This lives here, not in the builder, because the verifier re-derives the expected feedback
 // line independently and the two must agree on which document gets which form. One definition,
 // both readers.
 //
-// To adopt the plain form everywhere, set PLAIN_BY_DEFAULT to true — PLAIN_EXCEPTIONS then
-// reads as the list of documents that keep brackets, and should be emptied.
-const PLAIN_BY_DEFAULT = false;
-const PLAIN_EXCEPTIONS = new Set(['practice:M1L3']);
+// To adopt the own-line form everywhere, set OWN_LINE_BY_DEFAULT to true — OWN_LINE_EXCEPTIONS
+// then reads as the list of documents that keep brackets, and should be emptied.
+const OWN_LINE_BY_DEFAULT = false;
+const OWN_LINE_EXCEPTIONS = new Set(['practice:M1L3']);
 
 // key: "graded:M2", "practice:M1L3", "final:M5"
 const styleKey = (kind, num, lesson) =>
   `${kind}:M${num}` + (kind === 'practice' ? `L${lesson}` : '');
 
 function referenceStyle(kind, num, lesson) {
-  const listed = PLAIN_EXCEPTIONS.has(styleKey(kind, num, lesson));
-  return (PLAIN_BY_DEFAULT ? !listed : listed) ? 'plain' : 'bracketed';
+  const listed = OWN_LINE_EXCEPTIONS.has(styleKey(kind, num, lesson));
+  return (OWN_LINE_BY_DEFAULT ? !listed : listed) ? 'own-line' : 'bracketed';
 }
 
-// The string appended to an explanation, given the resolved references for a question.
-// Both callers use this rather than formatting it themselves.
-function referSuffix(refs, style) {
+// The reference itself, with no surrounding punctuation or spacing: the text of the own-line
+// paragraph, and the body of the bracketed form. '' when the question resolved no reference.
+function referText(refs) {
   if (!refs || !refs.length) return '';
-  const body = 'Refer to ' + refs.map(r => r.ref).join('; ');
-  return style === 'plain' ? ` ${body}` : ` (${body})`;
+  return 'Refer to ' + refs.map(r => r.ref).join('; ');
+}
+
+// What follows the explanation ON THE SAME LINE. Empty for the own-line form, whose reference
+// is a paragraph of its own — the builder emits that separately and the verifier folds it back.
+function referSuffix(refs, style) {
+  const body = referText(refs);
+  if (!body || style === 'own-line') return '';
+  return ` (${body})`;
 }
 
 function loadOutline() {
@@ -273,5 +290,5 @@ function listDocs() {
 module.exports = {
   SP, SLUG, DOCS, loadOutline, listDocs, readFileName, norm,
   resolveModule, resolveLesson, resolveAsset, resolveQuestionRefs,
-  referenceStyle, referSuffix,
+  referenceStyle, referSuffix, referText,
 };

@@ -26,7 +26,7 @@
 const fs = require('fs');
 const path = require('path');
 const { zipDir } = require('./lib-zipwriter');
-const { referenceStyle, referSuffix } = require('./deploying-ai-agents-lib');
+const { referSuffix, referText } = require('./deploying-ai-agents-lib');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const TMPL = path.join(SP, 'tmpl');
@@ -242,14 +242,21 @@ function buildBody(spec, warnings) {
     P.push(blank());
 
     if (!q.correct) throw new Error(`${where} Q${q.num}: no answer key`);
-    // Both assets are listed when a question cites two; the pointer stays on ONE line with the
-    // explanation, which is the safest form for the importer and matches Coursera's own
-    // convention of putting the review pointer inline in the feedback sentence.
-    // Explanation, ONE space, then the refer statement. Whether it is bracketed is decided
-    // per document in deploying-ai-agents-lib.js, which the verifier reads too — see the
-    // note there. The explanation is trimmed before this is appended, so the single space
-    // is the only separator either way.
+    // Both assets are listed when a question cites two. Which of the two layouts this document
+    // uses is decided per document in deploying-ai-agents-lib.js, which the verifier reads too:
+    //
+    //   bracketed   Feedback: <explanation> (Refer to Module 1 Lesson 3 Video: <title>)
+    //
+    //   own-line    Feedback: <explanation>
+    //               Refer to Module 1 Lesson 3 Video: <title>
+    //
+    // The own-line form is a SEPARATE, ZERO-SPACED paragraph directly below the feedback, never
+    // a <w:br/> inside it — settled by the ten-encoding probe upload recorded in the lib. It
+    // must follow its feedback with nothing in between; a blank paragraph there ends the
+    // feedback as far as the importer is concerned.
+    const ownLine = spec.refStyle === 'own-line';
     const refer = referSuffix(q.refs, spec.refStyle);
+    const refLine = referText(q.refs);
     if (!q.refs.length) {
       warnings.push(`${where} Q${q.num}: no resolved reference — its feedback carries no pointer `
         + 'back to the course material');
@@ -258,7 +265,12 @@ function buildBody(spec, warnings) {
       P.push(para([[`${o.letter === q.correct ? '*' : ''}${o.letter}: ${o.text}`]]));
       const fb = String(quiz.questions.find(x => x.num === q.num).feedback[o.letter] || '').trim();
       if (!fb) throw new Error(`${where} Q${q.num} option ${o.letter}: no feedback`);
-      P.push(para([['Feedback: ' + fb + refer]]));
+      if (ownLine && refLine) {
+        P.push(para([['Feedback: ' + fb]]));
+        P.push(para([[refLine]], { tight: true }));
+      } else {
+        P.push(para([['Feedback: ' + fb + refer]]));
+      }
       P.push(blank());
     }
   }

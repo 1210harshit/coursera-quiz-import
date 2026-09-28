@@ -22,7 +22,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { referSuffix } = require('./deploying-ai-agents-lib');
+const { referSuffix, referText } = require('./deploying-ai-agents-lib');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const dec = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
@@ -48,13 +48,14 @@ const ONE_REF = new RegExp(`^Module \\d+ Lesson \\d+ (?:${KIND_LABEL}): \\S`);
 // document uses is decided in deploying-ai-agents-lib.js and is checked here, not assumed —
 // the point is that a document silently switching form fails.
 //
-//   plain      … explanation. Refer to Module 1 Lesson 3 Video: <title>
+//   own-line   … explanation.⏎Refer to Module 1 Lesson 3 Video: <title>
 //   bracketed  … explanation. (Refer to Module 1 Lesson 3 Video: <title>)
 //
-// The plain pattern ends on a character that is neither a bracket nor whitespace, so the
-// parenthesised form cannot satisfy it, and vice versa.
+// The own-line pattern requires the fold's newline before "Refer to" and ends on a character
+// that is neither a bracket nor whitespace, so the parenthesised form cannot satisfy it, and
+// vice versa.
 const REF_TAIL = {
-  plain: new RegExp(`\\. Refer to Module \\d+ Lesson \\d+ (?:${KIND_LABEL}): .*[^)\\s]$`),
+  'own-line': new RegExp(`\\nRefer to Module \\d+ Lesson \\d+ (?:${KIND_LABEL}): .*[^)\\s]$`),
   bracketed: new RegExp(`\\(Refer to Module \\d+ Lesson \\d+ (?:${KIND_LABEL}): .+\\)$`),
 };
 
@@ -113,7 +114,7 @@ function verifyAll(OUT, files, summaryNoun) {
     const full = path.join(OUT, file);
     console.log(`\n=== ${label}: ${file} ===`);
     if (!fs.existsSync(full)) { bad('file does not exist'); continue; }
-    if (refStyle !== 'plain' && refStyle !== 'bracketed') {
+    if (refStyle !== 'own-line' && refStyle !== 'bracketed') {
       bad(`no reference style given for this document (got ${JSON.stringify(refStyle)})`);
       continue;
     }
@@ -181,7 +182,25 @@ function verifyAll(OUT, files, summaryNoun) {
         bad(`prose collides with a marker string at line ${i}: "${l.slice(0, 70)}"`);
     });
 
-    const secPairs = lines.slice(s + 1, e).map((l, i) => ({ l, x: xmls[s + 1 + i] })).filter(p => p.l);
+    // In the own-line layout each "Refer to Module ..." is its own paragraph and must sit
+    // IMMEDIATELY after its Feedback: paragraph — a blank paragraph between them would end the
+    // feedback as far as the importer is concerned. Fold each such pair into one logical line
+    // joined by SEP, so every per-option check below reads one feedback line in either layout.
+    // A reference paragraph anywhere else is left unfolded, and the grammar check rejects it.
+    const SEP = refStyle === 'own-line' ? '\n' : '';
+    const rawPairs = lines.slice(s + 1, e).map((l, i) => ({ l, x: xmls[s + 1 + i] }));
+    const folded = [];
+    rawPairs.forEach(p => {
+      const prev = folded[folded.length - 1];
+      if (refStyle === 'own-line' && /^Refer to Module /.test(p.l)
+          && prev && /^Feedback: /.test(prev.l)) {
+        if (!/w:after="0"/.test(p.x))
+          bad(`reference paragraph is not zero-spaced: "${p.l.slice(0, 60)}"`);
+        prev.l += SEP + p.l;
+        prev.x += p.x;
+      } else folded.push({ ...p });
+    });
+    const secPairs = folded.filter(p => p.l);
     const sec = secPairs.map(p => p.l);
 
     secPairs.forEach((p, i) => {
@@ -211,10 +230,13 @@ function verifyAll(OUT, files, summaryNoun) {
       if (!src) { bad(`question block ${k + 1} has no counterpart in the parsed source`); return; }
       const tag = `Q${src.num}`;
       const wantRefs = src.refs.map(r => r.ref);
-      // Built from the same referSuffix() the builder calls, with the same per-document style,
-      // so the two cannot drift on the brackets. Everything else about the line is still
-      // re-derived here from the parsed JSON rather than trusted from the builder.
-      const refer = referSuffix(src.refs, refStyle);
+      // Built from the same helpers the builder calls, with the same per-document style, so
+      // the two cannot drift on the layout. Everything else about the line is still re-derived
+      // here from the parsed JSON rather than trusted from the builder. In the own-line layout
+      // the separator is the fold's newline; in the bracketed one it is inside referSuffix.
+      const refer = refStyle === 'own-line'
+        ? (referText(src.refs) ? SEP + referText(src.refs) : '')
+        : referSuffix(src.refs, refStyle);
 
       if (blk[0] !== `Question ${src.num} - multiple choice, shuffle`)
         bad(`${tag} header wrong: "${blk[0]}"`);
@@ -240,8 +262,12 @@ function verifyAll(OUT, files, summaryNoun) {
             + `\n      want: ${JSON.stringify(wantFb)}`);
           return;
         }
-        if (fbs[oi].includes('\n'))
-          bad(`${tag} feedback ${o.letter}: contains a line break — must be one line`);
+        // A break inside the EXPLANATION is always wrong, in either layout. In the own-line
+        // layout the one legitimate break is the fold's, between the explanation and the
+        // reference; its count is checked exactly, further down.
+        const explPart = refStyle === 'own-line' ? fbs[oi].split('\n')[0] : fbs[oi];
+        if (explPart.includes('\n'))
+          bad(`${tag} feedback ${o.letter}: the explanation contains a line break`);
         // The verdict word is the answer key; Coursera shows right/wrong itself, and leaving
         // it in would tell the learner the answer inside every option's feedback. The trailing
         // punctuation is part of the test, not decoration: one explanation in the Module 3
@@ -263,19 +289,26 @@ function verifyAll(OUT, files, summaryNoun) {
         for (const r of wantRefs) {
           if (!ONE_REF.test(r)) bad(`${tag} feedback ${o.letter}: bad reference "${r}"`);
         }
-        // Exactly ONE space between the explanation and the reference, in either style.
+        // Exactly ONE separator between the explanation and the reference: a single newline
+        // where the reference paragraph was folded on, a single space in the bracketed form.
+        // Anything longer means a stray space or a second break survived into the document.
         if (/\s\s+\(?Refer to Module/.test(fbs[oi]))
-          bad(`${tag} feedback ${o.letter}: more than one space before the refer statement`);
-        // And the style must be the one this document was built for. A plain reference in a
-        // bracketed document, or the reverse, is exactly what this pair of checks exists for —
-        // both forms are in use in this course, so neither can be assumed.
+          bad(`${tag} feedback ${o.letter}: more than one space or break before the reference`);
+        const breaks = (fbs[oi].match(/\n/g) || []).length;
+        if (breaks !== (refStyle === 'own-line' ? 1 : 0)) {
+          bad(`${tag} feedback ${o.letter}: ${breaks} line break(s), expected `
+            + `${refStyle === 'own-line' ? 1 : 0} for the ${refStyle} layout`);
+        }
+        // And the layout must be the one this document was built for. An own-line reference in
+        // a bracketed document, or the reverse, is exactly what this pair of checks exists for —
+        // both layouts are in use in this course, so neither can be assumed.
         const isBracketed = /\(\s*Refer to Module/.test(fbs[oi]);
-        if (refStyle === 'plain' && isBracketed)
-          bad(`${tag} feedback ${o.letter}: the refer statement is bracketed, but this document `
-            + 'is built unbracketed');
+        if (refStyle === 'own-line' && isBracketed)
+          bad(`${tag} feedback ${o.letter}: the reference is bracketed, but this document is `
+            + 'built with the reference on its own line');
         if (refStyle === 'bracketed' && !isBracketed)
-          bad(`${tag} feedback ${o.letter}: the refer statement is not bracketed, but this `
-            + 'document is built bracketed');
+          bad(`${tag} feedback ${o.letter}: the reference is not bracketed, but this document `
+            + 'is built bracketed');
         const opens = (fbs[oi].match(/\(/g) || []).length;
         const closes = (fbs[oi].match(/\)/g) || []).length;
         if (opens !== closes)
