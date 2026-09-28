@@ -18,11 +18,56 @@ const fs = require('fs');
 const path = require('path');
 const { readQuizDoc } = require('./lib-quizdoc-ibm');
 const L = require('./bpa-course-1-lib');
+// Drafted answer options for the one document whose source lost its distractors. See the long
+// note in that file; delete both this require and the applyOverrides() call below when a
+// corrected source arrives.
+const OVERRIDES = require('./bpa-course-1-m4l1-overrides');
 
 const outline = L.loadOutline();
 const warn = [];
 const notes = [];
 const out = [];
+
+// Substitutes drafted option text into the one document whose source carries the same option
+// in all four slots. Every substitution is reported, and a substitution that does not change
+// anything is reported too — that is the signal a corrected source has arrived and this file
+// should be deleted rather than left to shadow it.
+function applyOverrides(doc, docKey, issues) {
+  if (!OVERRIDES || OVERRIDES.document !== docKey) return;
+  let applied = 0;
+  for (const q of doc.questions) {
+    const spec = OVERRIDES.questions[q.num];
+    if (!spec) continue;
+    for (const o of q.options) {
+      const sub = spec[o.letter];
+      if (!sub) continue;
+      if (o.letter === q.correct) {
+        issues.push(`Q${q.num}: an override targets option ${o.letter}, which is the ANSWER KEY. `
+          + 'Refusing to overwrite it — check the override file.');
+        continue;
+      }
+      if (sub.text && sub.text !== o.text) { o.text = sub.text; applied++; }
+      if (sub.feedback) o.text_feedback = sub.feedback;
+    }
+  }
+  if (!applied) {
+    issues.push(`${OVERRIDES.source}: the drafted-option overrides changed nothing — the source `
+      + 'appears to have been corrected. Delete src/bpa-course-1-m4l1-overrides.js and the two '
+      + 'lines that use it.');
+    return;
+  }
+  // The duplicate-option issues raised at read time were about the text now replaced.
+  for (let i = issues.length - 1; i >= 0; i--) {
+    if (/have the same text\. Coursera rejects/.test(issues[i])) issues.splice(i, 1);
+  }
+  const invented = Object.values(OVERRIDES.questions)
+    .flatMap(q => Object.entries(q)).filter(([, v]) => v.invented).length;
+  issues.push(`${applied} answer options in this document are DRAFTED, not the course author's: `
+    + `the source repeats the key in all four slots. ${invented} of them (option A of each `
+    + 'question) are invented outright, because their feedback was damaged too; the rest are '
+    + 'reconstructed from the feedback that survived. Have an SME review before publishing — '
+    + 'see src/bpa-course-1-m4l1-overrides.js.');
+}
 
 for (const d of L.listDocs()) {
   if (d.file.kind !== 'practice') continue;
@@ -38,6 +83,8 @@ for (const d of L.listDocs()) {
   if (!num) { warn.push(...issues.map(x => `${d.base}: ${x}`)); continue; }
   const lesson = L.resolveLesson(outline.meta, num, doc.lessonRef, d.file, issues);
   if (!lesson) { warn.push(...issues.map(x => `M${num}: ${x}`)); continue; }
+
+  applyOverrides(doc, `practice:M${num}L${lesson}`, issues);
 
   L.resolveQuestionRefs(outline, doc, issues, d.base, { module: num });
 
