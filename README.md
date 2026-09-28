@@ -39,10 +39,10 @@ Question 1 - multiple choice, shuffle
 <prompt — exactly one line>
 
 A: <option text>
-Feedback: <explanation> (Refer to M1L1V1: <video title>)
+Feedback: <explanation> (Refer to Module 1 Lesson 1 Video: <title>)
 
 *B: <option text>
-Feedback: <explanation> (Refer to M1L1V1: <video title>)
+Feedback: <explanation> (Refer to Module 1 Lesson 1 Video: <title>)
 ```
 
 - Questions **must** start with the literal English `Question <n>`; properties follow a hyphen.
@@ -50,6 +50,64 @@ Feedback: <explanation> (Refer to M1L1V1: <video title>)
 - `Feedback:` must be the line immediately after its option.
 - Only content between `----- Importable content starts here -----` and
   `----- End of importable content -----` is imported.
+
+### The reference line
+
+Module and lesson are spelled out in full words, and the asset kind carries **no number**.
+The feedback line is: explanation, **one space**, refer statement — no brackets.
+
+```
+Feedback: <explanation> Refer to Module 1 Lesson 3 Video: Testing the Workflow as a Whole
+Feedback: <explanation> Refer to Module 1 Lesson 3 Reading: An Annotated Multi-Agent Build Example
+Feedback: <explanation> Refer to Module 1 Lesson 3 Lab: Build a Coordinated Two-Agent Workflow
+```
+
+Where a question is written from two items, both follow the one `Refer to`, separated by `; `.
+
+**The label is the item type the learner sees, not the outline's own word for it.** An FAQ is
+not a Coursera item type — it is published as a Reading — so it is labelled `Reading:` and
+keeps its own designation inside the title, where the outline puts it:
+
+```
+Feedback: <explanation> Refer to Module 1 Lesson 1 Reading: FAQ: When Two Agents Both Think They Own the Same Step
+```
+
+Never `FAQ:` as a label. The verifier's list of accepted labels deliberately omits it, so a
+regression fails the build rather than shipping.
+
+#### Bracketed or not
+
+Both forms are in use, and which one a document gets is decided per document:
+
+| | Reference form |
+|---|---|
+| Default, everywhere | `… explanation. (Refer to Module 1 Lesson 3 Video: <title>)` |
+| Documents listed in `PLAIN_EXCEPTIONS` | `… explanation. Refer to Module 1 Lesson 3 Video: <title>` |
+
+As of 2026-09-28 the only unbracketed document is the `deploying-ai-agents` Module 1 Lesson 3
+practice quiz, which the course owner asked to see in the plain form before deciding whether it
+goes across the set.
+
+The decision lives in ONE place — `PLAIN_BY_DEFAULT` and `PLAIN_EXCEPTIONS` in
+`deploying-ai-agents-lib.js` — because the builder and the verifier both read it and must
+agree. To adopt the plain form for a whole course, flip `PLAIN_BY_DEFAULT` to `true` and empty
+the exception list. The verifier checks each document against the style it was built for, so a
+document in the wrong form fails rather than shipping.
+
+Everything else about the line — full words, no video number, label by item type — is common to
+both forms.
+
+Delivered courses are never retrofitted. Changing one means re-uploading it, which is the
+course owner's call.
+
+This is the standing pattern for **every course built from 2026-09-25 onward**, at the course
+owner's instruction. It is deliberately *not* retrofitted: courses already delivered keep the
+form they shipped with — `Refer to M1L1V1:` for most of them, and the spaced-but-numbered
+`Refer to Module 1 Lesson 1 Video 2:` for the eight built just before the change. Changing a
+delivered course means re-uploading it, which is the course owner's call, not the pipeline's.
+
+The `M<x>L<y>V<z>` code is still derived and still stored — it is what orders videos within a
+lesson and what every mapping check is written against. It simply does not reach the learner.
 
 ### Constraints that cause silent failures
 

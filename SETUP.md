@@ -118,13 +118,54 @@ A clean run ends with:
 The `.docx` files in `work/genai-retail/dist/` are what you upload — one per module, via
 **Import** on a Coursera quiz item.
 
+### 4a. A course whose sources are one file per assessment
+
+`deploying-ai-agents` ships seventeen separate assessment documents rather than one per
+artefact type, so its extraction step differs: each source `.docx` becomes its own directory
+under `work/<slug>/docs/`, named after the file, and the parsers classify them by reading their
+headers. Everything downstream is the usual four stages, run once per family.
+
+```bash
+mkdir -p work/deploying-ai-agents/docs
+unzip -q "Course_Syllabus_…_V1.docx" -d work/deploying-ai-agents/outline
+find "05 - Assessments and Quizzes" -name '*.docx' | while read -r f; do
+  unzip -q -o "$f" -d "work/deploying-ai-agents/docs/$(basename "$f" .docx)"
+done
+```
+
+```bash
+node src/deploying-ai-agents-parse-outline.js  > work/deploying-ai-agents/outline.json
+node src/deploying-ai-agents-parse-quiz.js     > work/deploying-ai-agents/quiz.json
+node src/deploying-ai-agents-parse-practice.js > work/deploying-ai-agents/practice.json
+node src/deploying-ai-agents-parse-final.js    > work/deploying-ai-agents/final.json
+```
+
+```bash
+node src/deploying-ai-agents-build.js          work/deploying-ai-agents/dist
+node src/deploying-ai-agents-practice-build.js work/deploying-ai-agents/dist-practice
+node src/deploying-ai-agents-final-build.js    work/deploying-ai-agents/dist-final
+```
+
+```bash
+node src/deploying-ai-agents-verify.js          work/deploying-ai-agents/dist
+node src/deploying-ai-agents-practice-verify.js work/deploying-ai-agents/dist-practice
+node src/deploying-ai-agents-final-verify.js    work/deploying-ai-agents/dist-final
+```
+
+Its document assembly and its checks each live in one shared module —
+`deploying-ai-agents-docbuild.js` and `deploying-ai-agents-docverify.js` — with three thin
+entry points, because three copies of a four-hundred-line builder is how a fix lands in two of
+them. Change the reference format in the builder and the verifier together.
+
+This course has **no course-content import**: only the quiz documents were asked for.
+
 ### Available slugs
 
 `osha` · `genai-marketing` · `genai-marketing-explanations` · `genai-retail` ·
 `genai-appdev` · `management-mastery` · `pm-course-1` · `pm-course-2` · `pm-course-3` ·
 `cstp-course-1` · `google-ads` · `google-ads-final` · `paid-social` · `paid-ads-11` ·
 `ai-toolkit-v2` · `digital-marketing` · `shopify` · `websites-15` · `ai-products` ·
-`soft-skills` · `digital-transformation`
+`soft-skills` · `digital-transformation` · `deploying-ai-agents`
 
 `google-ads-final` is the rewritten assessment for the same course as `google-ads`, against the
 same outline. It supersedes it: per-option explanations rather than one shared across four, a
@@ -350,6 +391,39 @@ decision. Read each one.
 
 Sources vary wildly, so a new course means a new parser. Budget most of your time here.
 
+**The reference line is fixed, whatever the source looks like.** Every new course writes it
+this way — module and lesson spelled out in full words, the asset kind carrying no number:
+
+```
+default:  Feedback: <explanation> (Refer to Module 1 Lesson 3 Video: Testing the Workflow as a Whole)
+plain:    Feedback: <explanation> Refer to Module 1 Lesson 3 Video: Testing the Workflow as a Whole
+```
+
+The brackets are the ONLY difference, and the choice is per document, set in
+`PLAIN_BY_DEFAULT` / `PLAIN_EXCEPTIONS` in `deploying-ai-agents-lib.js` — one definition that
+the builder and the verifier both read, so they cannot drift. Today only one document is
+plain: the `deploying-ai-agents` Module 1 Lesson 3 practice quiz, pending the course owner's
+review of the form.
+
+`Reading:`, `Lab:` and `Discussion Prompt:` take the same shape when a question is written
+from one of those rather than from a video; two items go in one bracket separated by `; `.
+Standing instruction from the course owner as of 2026-09-25 — see `README.md`,
+"The reference line".
+
+**Label by the item type the learner sees.** An FAQ is published as a Reading, so it is
+labelled `Reading:` and keeps its designation in the title:
+`Reading: FAQ: When Two Agents Both Think They Own the Same Step`. A bare `FAQ:` label is
+wrong. In `deploying-ai-agents` this is one row in `REFERENCE_AS` in the outline parser — add
+a row there rather than special-casing a kind downstream.
+
+Two things follow from it, and both have bitten already:
+
+- **The builder and its verifier must change together.** The verifier re-derives the expected
+  string independently rather than trusting the builder, which is the whole point of it. A
+  one-sided edit fails loudly, which is correct — but only if you run it.
+- **Do not retrofit delivered courses.** They keep the form they shipped with. Changing one
+  means re-uploading it, which is the course owner's decision.
+
 **Dump the source first.** Never guess at the layout:
 
 ```bash
@@ -399,6 +473,12 @@ grep -c '<w:br'    work/<slug>/quiz/word/document.xml   # line breaks inside par
 | Options whose letter is followed by a tab, a space, or nothing at all | `digital-transformation` |
 | A practice quiz whose heading combines both numbers (`Module N, Lesson N: Title`) | `emotional-intelligence` |
 | Per-module files differing only in paragraph style, not in line grammar | `emotional-intelligence` |
+| A flat bullet outline — `Module N (Planned duration…)` / `Lesson N:` / `•Video: Title (7 mins)` — with no tables | `deploying-ai-agents` |
+| Questions citing their source material by TITLE on an `Asset:` line, not by code | `deploying-ai-agents` |
+| Questions citing a Reading, Lab, FAQ or Discussion Prompt rather than a video | `deploying-ai-agents` |
+| The answer key implied only by the feedback verdict (`Correct.` / `Wrong.`), stars absent or partial | `deploying-ai-agents` |
+| One file per lesson AND per module AND a course-wide final exam, seventeen in all | `deploying-ai-agents` |
+| `Asset:` lines sitting ABOVE their question header in one file and below it in the rest | `deploying-ai-agents` |
 
 ### When a source states its mapping twice
 
@@ -442,6 +522,50 @@ parser therefore reports the exclusion on every run rather than leaving it in a 
 Check it the way it was checked here: the derived key count must equal the outline's own IVQ
 claim, and `--report` on the quiz parser must show every question mapped inside its own module
 with no unknown codes.
+
+### When the reference is not a video
+
+`deploying-ai-agents` is the case to read before assuming a feedback reference means a video.
+Every earlier course cites a code (`Mapped to: M1L1V2`) that can only be a video, so a video
+map was the whole of `outline.json`. This source cites a **title** on an `Asset:` line, and
+28 of its 110 questions cite a Reading, a Lab, an FAQ or a Discussion Prompt instead:
+
+```
+Asset: Video: How Agents Pass Work to Each Other; Reading: A Coordination Patterns Reference
+Asset: Lab: Map a Coordination Pattern
+```
+
+Its outline parser therefore indexes **every** learning item, not only the videos, and the
+reference names whatever the source named:
+
+```
+(Refer to Module 1 Lesson 1 Video: Choosing a Coordination Pattern)
+(Refer to Module 1 Lesson 1 Reading: A Coordination Patterns Reference for Multi-Agent Workflows)
+(Refer to Module 1 Lesson 1 Video: <title>; Module 1 Lesson 1 Reading: <title>)
+```
+
+Forcing all of these into `Video` would send a quarter of the course's learners to material
+that does not answer the question they got wrong, and nothing would fail — the reference would
+still be well-formed. That is why the verifier checks the label against the outline's kind
+rather than against a fixed `Video`. The V number is still derived, and still stored as the
+asset `code`, but it does not reach the learner: the course owner asked for
+`Module 1 Lesson 3 Video: <title>`, not `Video 3`.
+
+Three further things this source settles, all of which are silent if you get them wrong:
+
+1. **The star is not the key.** Ten of the seventeen files mark the correct option with `*`,
+   two of them inconsistently (one stars 1 of 5, another 8 of 10). The verdict word opening
+   each feedback is present on all 440 options. Key from the verdict, and report a star that
+   disagrees rather than choosing between them.
+2. **The verdict's punctuation is part of the pattern.** One explanation reads
+   `Correct. Right signal and timing beat constant paging.` — matching a bare leading `Right`
+   eats the first word of a sentence. Two others read `Wrong .Coordination patterns…`, space
+   before the stop and none after — matching only `Wrong.` leaves a stray period in front of
+   the learner. Require the punctuation; do not require the spacing.
+3. **`Asset:` can sit above its question header.** Sixteen files put it below; the Module 4
+   Lesson 3 practice quiz puts it above, for every question but its first. Read it
+   positionally and every reference in that file shifts down by one while the last question
+   silently loses its reference altogether.
 
 ### A course-content parser
 
