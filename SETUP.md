@@ -401,14 +401,15 @@ decision. Read each one.
 Sources vary wildly, so a new course means a new parser. Budget most of your time here.
 
 **The reference line is fixed, whatever the source looks like.** Every new course writes it
-this way — module and lesson spelled out in full words, the asset kind carrying no number:
+this way — module and lesson spelled out in full words, the asset kind carrying **no number**,
+and the reference on its OWN zero-spaced paragraph directly below the feedback:
 
 ```
-default:   Feedback: <explanation> (Refer to Module 1 Lesson 3 Video: Testing the Workflow as a Whole)
-
-own-line:  Feedback: <explanation>
-           Refer to Module 1 Lesson 3 Video 3: Testing the Workflow as a Whole
+Feedback: <explanation>
+Refer to Module 1 Lesson 2 Video: Runaway Loops and Silent Failures
 ```
+
+Delivered courses keep whatever form they shipped with; this is for new work only.
 
 The own-line form is a separate, ZERO-SPACED paragraph directly under the feedback — never a
 `<w:br/>`, and never with a blank paragraph between; see the rules table in §7. The choice is

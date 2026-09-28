@@ -42,27 +42,30 @@ const DOCS = path.join(SP, SLUG, 'docs');
 // line independently and the two must agree on which document gets which form. One definition,
 // both readers.
 //
-// The own-line layout also NUMBERS ITS VIDEOS — "Video 1", not "Video" — because that is the
-// format settled for `managing` on GitHub, and the two must match. The bracketed layout is
-// kept only so a document can be built in the older form if one is ever asked for; nothing in
-// this course uses it. So the style is two decisions travelling together, not one.
+// THE VIDEO IS NOT NUMBERED — "Video:", not "Video 1:" — at the course owner's instruction of
+// 2026-09-28, which is the standing format from this course onward:
 //
-// EVERY document in this course uses the GitHub format. It is a new course, and the course
-// owner asked for that format to apply from here on; the split in `deploying-ai-agents` exists
-// only because that course was already delivered in the older form and just one document was
-// re-cut. So here the default is on and the exception list is empty.
-const GITHUB_FORMAT_BY_DEFAULT = true;
-const GITHUB_FORMAT_DOCS = new Set();
+//     Refer to Module 1 Lesson 2 Video: Runaway Loops and Silent Failures
+//
+// `managing` on GitHub numbers its videos, and this course briefly did too; the title is what
+// identifies the item, so the ordinal was dropped. The V number is still derived and still
+// stored as each asset's `code` — it is what orders videos within a lesson and what the
+// mapping checks run against — it simply does not reach the learner.
+//
+// EVERY document in this course uses the standing format. The bracketed layout is kept only so
+// a document could be built in the older form if one were ever asked for; nothing here uses it.
+const STANDING_FORMAT_BY_DEFAULT = true;
+const STANDING_FORMAT_DOCS = new Set();
 
 // key: "graded:M2", "practice:M1L3", "final:M5"
 const styleKey = (kind, num, lesson) =>
   `${kind}:M${num}` + (kind === 'practice' ? `L${lesson}` : '');
 
 function referenceStyle(kind, num, lesson) {
-  const listed = GITHUB_FORMAT_DOCS.has(styleKey(kind, num, lesson));
-  const github = GITHUB_FORMAT_BY_DEFAULT ? !listed : listed;
-  return github
-    ? { layout: 'own-line', numberVideos: true }
+  const listed = STANDING_FORMAT_DOCS.has(styleKey(kind, num, lesson));
+  const standing = STANDING_FORMAT_BY_DEFAULT ? !listed : listed;
+  return standing
+    ? { layout: 'own-line', numberVideos: false }
     : { layout: 'bracketed', numberVideos: false };
 }
 
