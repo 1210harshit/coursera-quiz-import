@@ -64,7 +64,10 @@ const IS_CORRECT = /^(Correct|Right)\b/i;
 
 // Marker lines and reference-only scaffolding that can appear inside the source. Anything
 // matched here is skipped wherever it falls.
-const NOISE = /^-+\s*(Importable content starts here|End of importable content)\s*-+$/i;
+// The Module 1 graded quiz wraps its end marker in asterisks — "*----- End of importable
+// content -----*" — so the decoration is part of the pattern rather than assumed away.
+const NOISE = /^[*\s]*-+\s*(Importable content starts here|End of importable content)\s*-+[*\s]*$/i;
+const END_MARKER = /^[*\s]*-+\s*End of importable content\s*-+[*\s]*$/i;
 
 const clean = s => String(s).replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -73,10 +76,40 @@ const clean = s => String(s).replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
 // captured so the parser can check it against the module the asset actually belongs to.
 const ASSET_KIND = /^(?:Module\s+(\d+)\s+)?([A-Za-z][A-Za-z –-]*?)\s*:\s*(.+)$/;
 
+// THE KIND CAN ALSO TRAIL THE TITLE, in parentheses: "The Architecture Without the Jargon
+// (Video)". Foundations of Agentic Teams writes all 146 of its citations that way and never
+// uses the prefix form. Matching is restricted to the kinds the syllabi actually use, because
+// a title can legitimately end in a parenthetical — "Automation Readiness Checklist (IBM
+// Consulting playbooks)" does — and only a known kind should be lifted out of one.
+const TRAILING_KINDS = ['Day-in-the-Life Video', 'Downloadable Resource', 'Cumulative Project',
+  'Discussion Prompt', 'Expert Viewpoints', 'Expert Viewpoint', 'SME Interview', 'Practice Quiz',
+  'Graded Quiz', 'Demo Video', 'Case Study', 'Final Exam', 'Reading', 'Video', 'Lab', 'FAQ'];
+const TRAILING_KIND = new RegExp(`^(.*\\S)\\s*\\((${TRAILING_KINDS.join('|')})\\)\\s*$`, 'i');
+
 function splitAssets(text) {
   return String(text).split(';').map(part => {
     const t = clean(part);
     if (!t) return null;
+    // The trailing form is tried FIRST: "Skills, Agents and Workflows: A Reading (Video)" would
+    // otherwise be read as kind "Skills, Agents and Workflows" by the prefix pattern.
+    const tk = TRAILING_KIND.exec(t);
+    if (tk) {
+      const bare = /^Module\s+(\d+)\s+(.+)$/i.exec(clean(tk[1]));
+      let title = bare ? clean(bare[2]) : clean(tk[1]);
+      // A citation can state the kind at BOTH ends — "FAQ: When Leadership Expects the Platform
+      // to Replace the Manager (Reading)", "Lab: Audit a Team Operating Rhythm (Lab)". The
+      // leading copy is redundant and has to go, for two reasons: it stops the title matching
+      // the outline, which stores it bare, and an FAQ is re-labelled "Reading:" with "FAQ: "
+      // restored in front of the title — so leaving it would produce "Reading: FAQ: FAQ: …".
+      const lead = new RegExp(`^(?:${TRAILING_KINDS.join('|')})\\s*:\\s*`, 'i');
+      title = clean(title.replace(lead, ''));
+      return {
+        kind: clean(tk[2]),
+        title,
+        statedModule: bare ? Number(bare[1]) : null,
+        raw: t,
+      };
+    }
     const m = ASSET_KIND.exec(t);
     if (!m) {
       // No "Kind:" prefix — the final exam has two citations written as plain phrases. A
@@ -231,6 +264,11 @@ function readQuizDoc(docxDir, label) {
   let pendingOption = null;   // option awaiting its Feedback line
   let carried = null;         // Asset line read ahead of its own question header
   for (const line of body) {
+    // Everything after the end marker is reference-only scaffolding, not questions. The final
+    // exam follows its last question with a score-interpretation table — "9 to 10", "Strong.
+    // You are reading scenarios for the work…" — every line of which would otherwise be read
+    // as trailing content of question 10.
+    if (END_MARKER.test(line)) break;
     if (!line || NOISE.test(line)) continue;
 
     const qh = Q_HEAD.exec(line);
@@ -272,8 +310,13 @@ function readQuizDoc(docxDir, label) {
       const text = clean(fb[1]);
       const v = VERDICT.exec(text);
       if (!v) {
-        issues.push(`Q${q.num} option ${pendingOption.letter}: feedback opens with no `
-          + 'Correct/Wrong verdict, so this option cannot be keyed');
+        // NOT reported here. Foundations of Agentic Teams opens only the CORRECT option's
+        // feedback with a verdict and lets the three wrong ones simply explain themselves,
+        // which is a house style rather than a defect: the question is still keyed, by that
+        // one "Correct." and by the star. Whether the absence matters depends on whether the
+        // question ends up keyed at all, which is not known until its options have all been
+        // read — so it is recorded and judged in the per-question checks below.
+        pendingOption.noVerdict = true;
         pendingOption.text_feedback = text;
       } else {
         pendingOption.correct = IS_CORRECT.test(v[1]);
@@ -314,8 +357,9 @@ function readQuizDoc(docxDir, label) {
       if (inlineFb) {
         const v = VERDICT.exec(inlineFb);
         if (!v) {
-          issues.push(`Q${q.num} option ${pendingOption.letter}: feedback shares the option's line `
-            + 'and opens with no Correct/Wrong verdict, so this option cannot be keyed');
+          // Same judgement as the separate-line path: a wrong option may simply explain itself,
+          // and whether that matters depends on the question being keyed by another option.
+          pendingOption.noVerdict = true;
           pendingOption.text_feedback = inlineFb;
         } else {
           pendingOption.correct = IS_CORRECT.test(v[1]);
@@ -348,6 +392,14 @@ function readQuizDoc(docxDir, label) {
     if (qq.options.length !== 4) issues.push(`Q${qq.num}: ${qq.options.length} options, expected 4`);
 
     const keyed = qq.options.filter(o => o.correct === true).map(o => o.letter);
+    // A verdict-less option only matters when the question is NOT otherwise keyed. With exactly
+    // one "Correct." among the four, the remaining three are wrong by construction.
+    if (keyed.length !== 1) {
+      for (const o of qq.options.filter(o => o.noVerdict)) {
+        issues.push(`Q${qq.num} option ${o.letter}: feedback opens with no Correct/Wrong verdict, `
+          + 'and the question is not keyed by any other option, so it cannot be keyed at all');
+      }
+    }
     if (keyed.length === 1) qq.correct = keyed[0];
     else if (keyed.length === 0) issues.push(`Q${qq.num}: no option's feedback says "Correct"`);
     else issues.push(`Q${qq.num}: ${keyed.length} options say "Correct" (${keyed.join(', ')})`);

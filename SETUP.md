@@ -162,6 +162,13 @@ course owner asked for the quiz documents only, so neither has a `*-parse-course
 produces an `.xlsx`. The syllabus is parsed for the quiz pipeline alone — it is what resolves
 each question's cited asset to a module and lesson.
 
+`agentic-teams-c1` is Foundations of Agentic Teams, Course 1 of the same series as
+`deploying-ai-agents` (which is Course 3): 4 graded quizzes, 12 lesson practice quizzes and a
+final exam, 110 questions, and no course-content import either. Its final exam carries no
+`Asset:` lines at all, so its feedback deliberately ends without a reference — the parser says
+so once rather than per question, and the verifier treats a missing reference as a failure only
+when the source cited something that did not resolve.
+
 `bpa-course-1` is Business Process Automation, Course 1 (Foundations and High-Impact Process
 Identification): 4 graded quizzes, 15 lesson practice quizzes and a final exam, 125 questions.
 It is `deploying-ai-agents`' pipeline copied and adapted; what differs is listed in §6's
@@ -174,7 +181,8 @@ one.
 `genai-appdev` · `management-mastery` · `pm-course-1` · `pm-course-2` · `pm-course-3` ·
 `cstp-course-1` · `google-ads` · `google-ads-final` · `paid-social` · `paid-ads-11` ·
 `ai-toolkit-v2` · `digital-marketing` · `shopify` · `websites-15` · `ai-products` ·
-`soft-skills` · `digital-transformation` · `deploying-ai-agents` · `bpa-course-1`
+`soft-skills` · `digital-transformation` · `deploying-ai-agents` · `bpa-course-1` ·
+`agentic-teams-c1`
 
 `google-ads-final` is the rewritten assessment for the same course as `google-ads`, against the
 same outline. It supersedes it: per-option explanations rather than one shared across four, a
@@ -498,6 +506,12 @@ grep -c '<w:br'    work/<slug>/quiz/word/document.xml   # line breaks inside par
 | Assets cited by ordinal (`Lab 2`) rather than by title | `bpa-course-1` |
 | Asset citations that are a truncated PREFIX of the outline's title | `bpa-course-1` |
 | Filenames naming the lesson as a code (`M3L4`), inconsistently spaced, and two naming nothing but a production code | `bpa-course-1` |
+| The asset kind TRAILING the title in parentheses (`The Architecture Without the Jargon (Video)`) rather than prefixed | `agentic-teams-c1` |
+| The kind stated at BOTH ends (`FAQ: <title> (Reading)`) | `agentic-teams-c1` |
+| Only the CORRECT option's feedback carrying a verdict; the three wrong ones simply explain | `agentic-teams-c1` |
+| A final exam citing no assets at all, and followed by a score-interpretation table | `agentic-teams-c1` |
+| An end marker wrapped in asterisks (`*----- End of importable content -----*`) | `agentic-teams-c1` |
+| Underscore-separated filename codes (`M5_L1_...`), where `` never matches after the digit | `agentic-teams-c1` |
 
 ### When a source states its mapping twice
 
