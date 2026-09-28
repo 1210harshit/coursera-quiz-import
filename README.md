@@ -115,7 +115,7 @@ lesson and what every mapping check is written against. It simply does not reach
 |---|---|
 | A prompt must not begin `Word:` | A line starting `Scenario:` is read as an **answer option**. This rejected every scenario question until the label was removed. |
 | Guidance prose must not quote the marker strings | Coursera's own template says *"Imported content"* in prose but *"Importable content"* in the markers, precisely to avoid a false match. |
-| Keep the reference inside the `Feedback:` paragraph | A free-standing `Refer to …` paragraph is an unmatched line and rejects the question. |
+| Keep the reference in the `Feedback:` paragraph, or in the paragraph directly after it | A `Refer to …` paragraph separated from its feedback is an unmatched line and rejects the question. A `<w:br/>` inside the feedback imports but renders as several blank rows, so a separate paragraph is the only clean way to put the reference on its own line. |
 | Prompt length is **not** a limit | Coursera's own reference prompt runs ~800 characters. |
 
 ### Text fidelity

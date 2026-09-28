@@ -598,7 +598,8 @@ them before editing a builder.
 |---|---|
 | A prompt must not begin `Word:` | Coursera reads `Scenario: …` as an **answer option**. The question is rejected with a generic format error. |
 | The prompt must be a single line | A second prompt paragraph is an unmatched line. |
-| The video reference must stay **inside** the `Feedback:` paragraph | A free-standing `Refer to …` paragraph rejects the question. |
+| The video reference must be the `Feedback:` paragraph itself, or the paragraph **immediately** after it | A `Refer to …` paragraph anywhere else — after a blank line, or away from its feedback — rejects the question. |
+| Never put a `<w:br/>` line break in a `Feedback:` paragraph | It imports, but Coursera renders it as several blank rows with stray spaces. To put the reference on its own line, use a separate paragraph (probe upload, 2026-09-28). |
 | Guidance prose must not quote the marker strings | Coursera's own template says *"Imported content"* in prose and *"Importable content"* in the markers, deliberately. |
 | Prompt length is fine | Coursera's reference prompt is ~800 characters — length is never the cause. |
 
