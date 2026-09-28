@@ -398,12 +398,13 @@ this way — module and lesson spelled out in full words, the asset kind carryin
 default:   Feedback: <explanation> (Refer to Module 1 Lesson 3 Video: Testing the Workflow as a Whole)
 
 own-line:  Feedback: <explanation>
-           Refer to Module 1 Lesson 3 Video: Testing the Workflow as a Whole
+           Refer to Module 1 Lesson 3 Video 3: Testing the Workflow as a Whole
 ```
 
 The own-line form is a separate, ZERO-SPACED paragraph directly under the feedback — never a
 `<w:br/>`, and never with a blank paragraph between; see the rules table in §7. The choice is
-per document, set in `OWN_LINE_BY_DEFAULT` / `OWN_LINE_EXCEPTIONS` in
+per document — and it carries the video NUMBER, matching `managing` on GitHub, where the
+bracketed form does not. Set in `GITHUB_FORMAT_BY_DEFAULT` / `GITHUB_FORMAT_DOCS` in
 `deploying-ai-agents-lib.js` — one definition that the builder and the verifier both read, so
 they cannot drift. Today only one document is own-line: the `deploying-ai-agents` Module 1
 Lesson 3 practice quiz, pending the course owner's review of the form.

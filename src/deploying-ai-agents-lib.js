@@ -46,32 +46,41 @@ const DOCS = path.join(SP, SLUG, 'docs');
 // line independently and the two must agree on which document gets which form. One definition,
 // both readers.
 //
-// To adopt the own-line form everywhere, set OWN_LINE_BY_DEFAULT to true — OWN_LINE_EXCEPTIONS
-// then reads as the list of documents that keep brackets, and should be emptied.
-const OWN_LINE_BY_DEFAULT = false;
-const OWN_LINE_EXCEPTIONS = new Set(['practice:M1L3']);
+// The own-line layout also NUMBERS ITS VIDEOS — "Video 1", not "Video" — because it is the
+// format the course owner settled on GitHub for `managing`, and the two must match. The
+// bracketed layout keeps the unnumbered label this course was delivered with. So the style is
+// two decisions travelling together, not one.
+//
+// To adopt the GitHub format everywhere, set GITHUB_FORMAT_BY_DEFAULT to true —
+// GITHUB_FORMAT_DOCS then reads as the list of documents that keep the old form, and should
+// be emptied.
+const GITHUB_FORMAT_BY_DEFAULT = false;
+const GITHUB_FORMAT_DOCS = new Set(['practice:M1L3']);
 
 // key: "graded:M2", "practice:M1L3", "final:M5"
 const styleKey = (kind, num, lesson) =>
   `${kind}:M${num}` + (kind === 'practice' ? `L${lesson}` : '');
 
 function referenceStyle(kind, num, lesson) {
-  const listed = OWN_LINE_EXCEPTIONS.has(styleKey(kind, num, lesson));
-  return (OWN_LINE_BY_DEFAULT ? !listed : listed) ? 'own-line' : 'bracketed';
+  const listed = GITHUB_FORMAT_DOCS.has(styleKey(kind, num, lesson));
+  const github = GITHUB_FORMAT_BY_DEFAULT ? !listed : listed;
+  return github
+    ? { layout: 'own-line', numberVideos: true }
+    : { layout: 'bracketed', numberVideos: false };
 }
 
 // The reference itself, with no surrounding punctuation or spacing: the text of the own-line
 // paragraph, and the body of the bracketed form. '' when the question resolved no reference.
-function referText(refs) {
+function referText(refs, numberVideos) {
   if (!refs || !refs.length) return '';
-  return 'Refer to ' + refs.map(r => r.ref).join('; ');
+  return 'Refer to ' + refs.map(r => refString(r, numberVideos)).join('; ');
 }
 
-// What follows the explanation ON THE SAME LINE. Empty for the own-line form, whose reference
+// What follows the explanation ON THE SAME LINE. Empty for the own-line layout, whose reference
 // is a paragraph of its own — the builder emits that separately and the verifier folds it back.
 function referSuffix(refs, style) {
-  const body = referText(refs);
-  if (!body || style === 'own-line') return '';
+  const body = referText(refs, style.numberVideos);
+  if (!body || style.layout === 'own-line') return '';
   return ` (${body})`;
 }
 
@@ -253,11 +262,32 @@ function finish(rec, cited, issues, where, overrideTitle) {
   // the outline's either way.
   const title = overrideTitle || rec.title;
   const shown = (rec.titlePrefix || '') + title;
-  return {
+  // The PARTS are stored, not just the finished string, because two documents in this course
+  // spell the same reference differently — one numbers its videos, the rest do not — and that
+  // is a per-document build decision, not a property of the asset. refString() assembles them.
+  // `ref` is kept as the unnumbered form, which is what every check that does not care about
+  // numbering compares against.
+  const videoNo = rec.kind === 'Video' && /V(\d+)$/.test(rec.code || '')
+    ? Number(/V(\d+)$/.exec(rec.code)[1]) : null;
+  const out = {
     code: rec.code, kind: rec.kind, label: rec.label,
-    module: rec.module, lesson: rec.lesson, title,
-    ref: `Module ${rec.module} Lesson ${rec.lesson} ${rec.label}: ${shown}`,
+    module: rec.module, lesson: rec.lesson, title, shown, videoNo,
   };
+  out.ref = refString(out, false);
+  return out;
+}
+
+// One reference, assembled from its parts.
+//
+//   numberVideos false -> "Module 1 Lesson 3 Video: From One Agent to Two"
+//   numberVideos true  -> "Module 1 Lesson 3 Video 1: From One Agent to Two"
+//
+// Only videos take a number, and only when the document asks for it; a Reading, Lab or
+// Discussion Prompt has none to take. The number is the video's position in its lesson, from
+// the M<x>L<y>V<z> code the outline parser derives.
+function refString(r, numberVideos) {
+  const label = (numberVideos && r.videoNo) ? `${r.label} ${r.videoNo}` : r.label;
+  return `Module ${r.module} Lesson ${r.lesson} ${label}: ${r.shown}`;
 }
 
 // Every question in one document: resolve its cited assets into reference strings.
@@ -290,5 +320,5 @@ function listDocs() {
 module.exports = {
   SP, SLUG, DOCS, loadOutline, listDocs, readFileName, norm,
   resolveModule, resolveLesson, resolveAsset, resolveQuestionRefs,
-  referenceStyle, referSuffix, referText,
+  referenceStyle, referSuffix, referText, refString,
 };

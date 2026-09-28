@@ -22,7 +22,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { referSuffix, referText } = require('./deploying-ai-agents-lib');
+const { referSuffix, referText, refString } = require('./deploying-ai-agents-lib');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const dec = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
@@ -31,32 +31,35 @@ const dec = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g
 // The asset kinds the outline parser can label a reference with. Anything outside this set in
 // a built document means the label came from somewhere it should not have.
 //
-// "Video" carries NO number — "Module 1 Lesson 3 Video: Testing the Workflow as a Whole", not
-// "Video 3". A numbered label here is a failure, not an alternative, so that a future edit
-// reintroducing the number is caught rather than accepted. Listed longest-first so "Demo Video"
+// Whether "Video" carries a number is a per-document decision — the GitHub format numbers it
+// ("Video 1"), the form this course shipped with does not ("Video"). So the pattern is built
+// per document from its own style, and a number appearing where the document is unnumbered
+// fails, as does a number missing where it is numbered. Listed longest-first so "Demo Video"
 // and "Day-in-the-Life Video" are not shadowed by the bare "Video".
 //
-// "FAQ" is NOT in this list, and must not be. An FAQ is published as a Reading, so its
+// "FAQ" is NOT in either list, and must not be. An FAQ is published as a Reading, so its
 // reference reads "Reading: FAQ: <question>" — the label is the item type the learner sees and
 // the designation lives in the title. A bare "FAQ:" label is a regression, and leaving it out
 // here is what catches it.
-const KIND_LABEL = 'Day-in-the-Life Video|Downloadable Resource|Cumulative Project|'
+const kindLabel = numberVideos => 'Day-in-the-Life Video|Downloadable Resource|Cumulative Project|'
   + 'Discussion Prompt|Expert Viewpoint|Practice Quiz|SME Interview|Graded Quiz|Demo Video|'
-  + 'Final Exam|Reading|Video|Lab';
-const ONE_REF = new RegExp(`^Module \\d+ Lesson \\d+ (?:${KIND_LABEL}): \\S`);
-// How the reference closes the feedback line, one pattern per style. Which style a given
+  + `Final Exam|Reading|Video${numberVideos ? ' \\d+' : ''}|Lab`;
+const oneRef = st => new RegExp(`^Module \\d+ Lesson \\d+ (?:${kindLabel(st.numberVideos)}): \\S`);
+// How the reference closes the feedback line, one pattern per layout. Which layout a given
 // document uses is decided in deploying-ai-agents-lib.js and is checked here, not assumed —
 // the point is that a document silently switching form fails.
 //
-//   own-line   … explanation.⏎Refer to Module 1 Lesson 3 Video: <title>
+//   own-line   … explanation.⏎Refer to Module 1 Lesson 3 Video 1: <title>
 //   bracketed  … explanation. (Refer to Module 1 Lesson 3 Video: <title>)
 //
 // The own-line pattern requires the fold's newline before "Refer to" and ends on a character
 // that is neither a bracket nor whitespace, so the parenthesised form cannot satisfy it, and
 // vice versa.
-const REF_TAIL = {
-  'own-line': new RegExp(`\\nRefer to Module \\d+ Lesson \\d+ (?:${KIND_LABEL}): .*[^)\\s]$`),
-  bracketed: new RegExp(`\\(Refer to Module \\d+ Lesson \\d+ (?:${KIND_LABEL}): .+\\)$`),
+const REF_TAIL = st => {
+  const K = kindLabel(st.numberVideos);
+  return st.layout === 'own-line'
+    ? new RegExp(`\\nRefer to Module \\d+ Lesson \\d+ (?:${K}): .*[^)\\s]$`)
+    : new RegExp(`\\(Refer to Module \\d+ Lesson \\d+ (?:${K}): .+\\)$`);
 };
 
 // "undefined" is an English word as well as a JavaScript value. Only the value form — standing
@@ -114,10 +117,11 @@ function verifyAll(OUT, files, summaryNoun) {
     const full = path.join(OUT, file);
     console.log(`\n=== ${label}: ${file} ===`);
     if (!fs.existsSync(full)) { bad('file does not exist'); continue; }
-    if (refStyle !== 'own-line' && refStyle !== 'bracketed') {
+    if (!refStyle || (refStyle.layout !== 'own-line' && refStyle.layout !== 'bracketed')) {
       bad(`no reference style given for this document (got ${JSON.stringify(refStyle)})`);
       continue;
     }
+    const layout = refStyle.layout;
 
     const ex = path.join(SP, 'vfy');
     fs.rmSync(ex, { recursive: true, force: true });
@@ -187,12 +191,12 @@ function verifyAll(OUT, files, summaryNoun) {
     // feedback as far as the importer is concerned. Fold each such pair into one logical line
     // joined by SEP, so every per-option check below reads one feedback line in either layout.
     // A reference paragraph anywhere else is left unfolded, and the grammar check rejects it.
-    const SEP = refStyle === 'own-line' ? '\n' : '';
+    const SEP = layout === 'own-line' ? '\n' : '';
     const rawPairs = lines.slice(s + 1, e).map((l, i) => ({ l, x: xmls[s + 1 + i] }));
     const folded = [];
     rawPairs.forEach(p => {
       const prev = folded[folded.length - 1];
-      if (refStyle === 'own-line' && /^Refer to Module /.test(p.l)
+      if (layout === 'own-line' && /^Refer to Module /.test(p.l)
           && prev && /^Feedback: /.test(prev.l)) {
         if (!/w:after="0"/.test(p.x))
           bad(`reference paragraph is not zero-spaced: "${p.l.slice(0, 60)}"`);
@@ -229,13 +233,14 @@ function verifyAll(OUT, files, summaryNoun) {
       const src = quiz.questions[k];
       if (!src) { bad(`question block ${k + 1} has no counterpart in the parsed source`); return; }
       const tag = `Q${src.num}`;
-      const wantRefs = src.refs.map(r => r.ref);
+      const wantRefs = src.refs.map(r => refString(r, refStyle.numberVideos));
       // Built from the same helpers the builder calls, with the same per-document style, so
       // the two cannot drift on the layout. Everything else about the line is still re-derived
       // here from the parsed JSON rather than trusted from the builder. In the own-line layout
       // the separator is the fold's newline; in the bracketed one it is inside referSuffix.
-      const refer = refStyle === 'own-line'
-        ? (referText(src.refs) ? SEP + referText(src.refs) : '')
+      const refText = referText(src.refs, refStyle.numberVideos);
+      const refer = layout === 'own-line'
+        ? (refText ? SEP + refText : '')
         : referSuffix(src.refs, refStyle);
 
       if (blk[0] !== `Question ${src.num} - multiple choice, shuffle`)
@@ -265,7 +270,7 @@ function verifyAll(OUT, files, summaryNoun) {
         // A break inside the EXPLANATION is always wrong, in either layout. In the own-line
         // layout the one legitimate break is the fold's, between the explanation and the
         // reference; its count is checked exactly, further down.
-        const explPart = refStyle === 'own-line' ? fbs[oi].split('\n')[0] : fbs[oi];
+        const explPart = layout === 'own-line' ? fbs[oi].split('\n')[0] : fbs[oi];
         if (explPart.includes('\n'))
           bad(`${tag} feedback ${o.letter}: the explanation contains a line break`);
         // The verdict word is the answer key; Coursera shows right/wrong itself, and leaving
@@ -287,7 +292,7 @@ function verifyAll(OUT, files, summaryNoun) {
         if (!fbs[oi].endsWith(refer))
           bad(`${tag} feedback ${o.letter}: reference not at end of the line`);
         for (const r of wantRefs) {
-          if (!ONE_REF.test(r)) bad(`${tag} feedback ${o.letter}: bad reference "${r}"`);
+          if (!oneRef(refStyle).test(r)) bad(`${tag} feedback ${o.letter}: bad reference "${r}"`);
         }
         // Exactly ONE separator between the explanation and the reference: a single newline
         // where the reference paragraph was folded on, a single space in the bracketed form.
@@ -295,26 +300,26 @@ function verifyAll(OUT, files, summaryNoun) {
         if (/\s\s+\(?Refer to Module/.test(fbs[oi]))
           bad(`${tag} feedback ${o.letter}: more than one space or break before the reference`);
         const breaks = (fbs[oi].match(/\n/g) || []).length;
-        if (breaks !== (refStyle === 'own-line' ? 1 : 0)) {
+        if (breaks !== (layout === 'own-line' ? 1 : 0)) {
           bad(`${tag} feedback ${o.letter}: ${breaks} line break(s), expected `
-            + `${refStyle === 'own-line' ? 1 : 0} for the ${refStyle} layout`);
+            + `${layout === 'own-line' ? 1 : 0} for the ${layout} layout`);
         }
         // And the layout must be the one this document was built for. An own-line reference in
         // a bracketed document, or the reverse, is exactly what this pair of checks exists for —
         // both layouts are in use in this course, so neither can be assumed.
         const isBracketed = /\(\s*Refer to Module/.test(fbs[oi]);
-        if (refStyle === 'own-line' && isBracketed)
+        if (layout === 'own-line' && isBracketed)
           bad(`${tag} feedback ${o.letter}: the reference is bracketed, but this document is `
             + 'built with the reference on its own line');
-        if (refStyle === 'bracketed' && !isBracketed)
+        if (layout === 'bracketed' && !isBracketed)
           bad(`${tag} feedback ${o.letter}: the reference is not bracketed, but this document `
             + 'is built bracketed');
         const opens = (fbs[oi].match(/\(/g) || []).length;
         const closes = (fbs[oi].match(/\)/g) || []).length;
         if (opens !== closes)
           bad(`${tag} feedback ${o.letter}: unbalanced brackets (${opens} open, ${closes} close)`);
-        if (!REF_TAIL[refStyle].test(fbs[oi]))
-          bad(`${tag} feedback ${o.letter}: the line does not end in the ${refStyle} reference `
+        if (!REF_TAIL(refStyle).test(fbs[oi]))
+          bad(`${tag} feedback ${o.letter}: the line does not end in the ${layout} reference `
             + `form -> "…${fbs[oi].slice(-70)}"`);
         refCount++;
       });

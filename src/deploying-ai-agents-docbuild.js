@@ -254,9 +254,9 @@ function buildBody(spec, warnings) {
     // a <w:br/> inside it — settled by the ten-encoding probe upload recorded in the lib. It
     // must follow its feedback with nothing in between; a blank paragraph there ends the
     // feedback as far as the importer is concerned.
-    const ownLine = spec.refStyle === 'own-line';
+    const ownLine = spec.refStyle.layout === 'own-line';
     const refer = referSuffix(q.refs, spec.refStyle);
-    const refLine = referText(q.refs);
+    const refLine = referText(q.refs, spec.refStyle.numberVideos);
     if (!q.refs.length) {
       warnings.push(`${where} Q${q.num}: no resolved reference — its feedback carries no pointer `
         + 'back to the course material');

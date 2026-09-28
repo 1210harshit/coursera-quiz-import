@@ -82,12 +82,16 @@ Both layouts are in use, and which one a document gets is decided per document:
 | | Reference layout |
 |---|---|
 | Default, everywhere | `… explanation. (Refer to Module 1 Lesson 3 Video: <title>)` on one line |
-| Documents listed in `OWN_LINE_EXCEPTIONS` | the reference as a **separate, zero-spaced paragraph** directly below the feedback, unbracketed |
+| Documents listed in `GITHUB_FORMAT_DOCS` | the reference as a **separate, zero-spaced paragraph** directly below the feedback, unbracketed, with the video **numbered** |
 
 ```
 Feedback: <explanation>
-Refer to Module 1 Lesson 3 Video: Testing the Workflow as a Whole
+Refer to Module 1 Lesson 3 Video 3: Testing the Workflow as a Whole
 ```
+
+This is the format settled for `managing` on GitHub, and the two are kept identical: own line,
+no brackets, and the video's position in its lesson after the word `Video`. A Reading, Lab or
+Discussion Prompt has no number to carry, so those keep the bare kind.
 
 A separate paragraph is the only clean way to do this — see the constraints table above. Never
 a `<w:br/>`, and never with a blank paragraph between the two.
@@ -96,9 +100,9 @@ As of 2026-09-28 the only own-line document is the `deploying-ai-agents` Module 
 practice quiz, which the course owner asked to see in that form before deciding whether it goes
 across the set.
 
-The decision lives in ONE place — `OWN_LINE_BY_DEFAULT` and `OWN_LINE_EXCEPTIONS` in
+The decision lives in ONE place — `GITHUB_FORMAT_BY_DEFAULT` and `GITHUB_FORMAT_DOCS` in
 `deploying-ai-agents-lib.js` — because the builder and the verifier both read it and must
-agree. To adopt it for a whole course, flip `OWN_LINE_BY_DEFAULT` to `true` and empty the
+agree. To adopt it for a whole course, flip `GITHUB_FORMAT_BY_DEFAULT` to `true` and empty the
 exception list. The verifier folds each reference paragraph back onto the feedback line above
 it, fails one that is not zero-spaced or not adjacent, and checks every document against the
 layout it was built for — so a document in the wrong layout fails rather than shipping.
