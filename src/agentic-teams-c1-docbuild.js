@@ -143,7 +143,17 @@ function thresholdValue(raw, nQ, warnings, where) {
     warnings.push(`${where}: the source writes the passing threshold as ${t}, but the document has `
       + `${nQ} questions. ${count} of ${nQ} is written.`);
   } else if (!frac && count > nQ) {
-    warnings.push(`${where}: the passing threshold is ${count} but there are only ${nQ} questions`);
+    // A BARE NUMBER LARGER THAN THE QUESTION COUNT IS A PERCENTAGE with the sign left off.
+    // This exam writes "Passing threshold: 80" over ten questions; reading that as "80 of 10"
+    // and giving up meant falling back to a default, which silently published a threshold the
+    // source never asked for. 80 of 10 is not a threshold anyone could mean.
+    if (count <= 100) {
+      warnings.push(`${where}: the passing threshold reads "${t}" with no % sign, and ${count} `
+        + `is more than the ${nQ} questions in the document, so it is read as ${count}%.`);
+      return count + '%';
+    }
+    warnings.push(`${where}: the passing threshold is ${count}, which is neither a percentage nor `
+      + `a count of the ${nQ} questions`);
     return null;
   }
   return Math.round((count / nQ) * 100) + '%';
