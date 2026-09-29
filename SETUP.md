@@ -408,43 +408,54 @@ decision. Read each one.
 
 Sources vary wildly, so a new course means a new parser. Budget most of your time here.
 
-**The reference line is fixed, whatever the source looks like.** Every new course writes it
-this way — module and lesson spelled out in full words, the asset kind carrying **no number**,
-and the reference on its OWN zero-spaced paragraph directly below the feedback:
+### Standing conventions for every new course
+
+These are the course owner's instructions, current as of 2026-09-29. They apply to NEW work.
+Delivered courses keep whatever form they shipped with — changing one means re-uploading it,
+which is the course owner's decision, not the pipeline's.
+
+**Start from `agentic-teams-c1`.** It is the most recent IBM-format pipeline and already
+carries every convention below, so copying it is how a new course inherits them rather than
+re-deriving them. For a non-IBM source shape, copy the closest match from the table further
+down and port these conventions across by hand.
+
+**1. The reference line.** Module and lesson spelled out in full words, the asset kind carrying
+**no number**, on its OWN zero-spaced paragraph directly below the feedback, unbracketed:
 
 ```
 Feedback: <explanation>
 Refer to Module 1 Lesson 2 Video: Runaway Loops and Silent Failures
 ```
 
-Delivered courses keep whatever form they shipped with; this is for new work only.
+Two cited items go in one `Refer to`, separated by `; `. The separate paragraph must sit
+directly under its feedback — never a `<w:br/>`, never with a blank paragraph between; see the
+rules table in §7 for the upload that settled that.
 
-The own-line form is a separate, ZERO-SPACED paragraph directly under the feedback — never a
-`<w:br/>`, and never with a blank paragraph between; see the rules table in §7. The choice is
-per document — and it carries the video NUMBER, matching `managing` on GitHub, where the
-bracketed form does not. Set in `GITHUB_FORMAT_BY_DEFAULT` / `GITHUB_FORMAT_DOCS` in
-`deploying-ai-agents-lib.js` — one definition that the builder and the verifier both read, so
-they cannot drift. Today only one document is own-line: the `deploying-ai-agents` Module 1
-Lesson 3 practice quiz, pending the course owner's review of the form.
-
-`Reading:`, `Lab:` and `Discussion Prompt:` take the same shape when a question is written
-from one of those rather than from a video; two items go in one bracket separated by `; `.
-Standing instruction from the course owner as of 2026-09-25 — see `README.md`,
-"The reference line".
-
-**Label by the item type the learner sees.** An FAQ is published as a Reading, so it is
-labelled `Reading:` and keeps its designation in the title:
+**2. Label by the item type the learner sees.** An FAQ is published as a Reading, so it is
+labelled `Reading:` and keeps its own designation inside the title:
 `Reading: FAQ: When Two Agents Both Think They Own the Same Step`. A bare `FAQ:` label is
-wrong. In `deploying-ai-agents` this is one row in `REFERENCE_AS` in the outline parser — add
-a row there rather than special-casing a kind downstream.
+wrong. This is one row in `REFERENCE_AS` in the outline parser — add a row there rather than
+special-casing a kind downstream.
 
-Two things follow from it, and both have bitten already:
+**3. The prompt keeps the source's paragraphs.** A scenario written as several paragraphs and a
+closing question reaches the learner that way, not as one block of text. The gap is paragraph
+SPACING, never an empty paragraph. `--join-prompt` restores the single-line form and is the
+first thing to try if an import fails.
+
+**4. Options must be distinct.** Coursera rejects a question whose options repeat with
+"Duplicate answers are not allowed", and no other check notices — the counts, the key, the
+feedback and the reference can all be correct. Checked at parse time and again on the built
+document.
+
+Two things follow, and both have bitten already:
 
 - **The builder and its verifier must change together.** The verifier re-derives the expected
   string independently rather than trusting the builder, which is the whole point of it. A
   one-sided edit fails loudly, which is correct — but only if you run it.
-- **Do not retrofit delivered courses.** They keep the form they shipped with. Changing one
-  means re-uploading it, which is the course owner's decision.
+- **A rule with one failed upload behind it is a hypothesis.** Two of this repo's oldest rules
+  were asserted that way and both turned out to be wrong: "a free-standing `Refer to` paragraph
+  rejects the question" (disproved by `managing-break-probe.js`) and "a second prompt paragraph
+  fails the whole document" (retired 2026-09-29). Probe before you encode.
 
 **Dump the source first.** Never guess at the layout:
 

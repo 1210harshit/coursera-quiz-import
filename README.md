@@ -89,13 +89,17 @@ Feedback: <explanation>
 Refer to Module 1 Lesson 2 Video: Runaway Loops and Silent Failures
 ```
 
-**This is the standing format for every new course from 2026-09-28.** Own line, no brackets,
+**This is the standing format for every new course.** Own line, no brackets,
 and the kind **unnumbered** — `Video:`, not `Video 1:`. The title identifies the item; the
 ordinal was tried and dropped. `managing` on GitHub still numbers its videos and keeps the
 form it shipped with, as does every other delivered course.
 
 The `M<x>L<y>V<z>` code is still derived and still stored — it orders videos within a lesson
 and every mapping check runs against it. It simply does not reach the learner.
+
+The full set of conventions a new course inherits — this line, FAQ labelling, prompt paragraphs
+and distinct options — is listed in `SETUP.md` §6, "Standing conventions for every new course".
+`agentic-teams-c1` is the pipeline to copy; it carries all of them.
 
 A separate paragraph is the only clean way to do this — see the constraints table above. Never
 a `<w:br/>`, and never with a blank paragraph between the two.
