@@ -34,7 +34,38 @@ const { lines } = require('./lib-lines');
 
 // "Question 4 - Multiple choice, shuffle" / "Question 4 – Multiple choice, shuffle".
 // The source mixes hyphen and en dash; both mean the same thing.
-const Q_HEAD = /^Question\s+(\d+)\s*[-–—]\s*(.+)$/i;
+// Three header forms across these sources, and the suffix is not always a question TYPE:
+//
+//     Question 1 - Multiple choice, shuffle     type
+//     Question 2                                no suffix at all
+//     Q1 (M1L3V1)                               the suffix is the MAPPING
+//     Question 4 - Reading M2L1                 the suffix is a kind plus a lesson
+//
+// Designing Human-AI Collaboration uses all four, and four of its files switch between them
+// mid-document. Reading only the first form lost 26 of its 107 questions outright, and
+// treating "Reading M2L1" as a type produced a warning about a question that is perfectly
+// well formed. So the suffix is captured and classified rather than assumed to be a type.
+const Q_HEAD = /^(?:Question\s+(\d+)|Q(\d+))\s*(?:[-–—]\s*(.+?)|\((\s*.+?\s*)\)|\s+([A-Za-z].*?))?\s*$/i;
+// The suffix can also be a LIST of mappings joined by "+": "M1L1V1 + M1L3 Reading",
+// "M3L1 Reading + M3L2V2 + M3L3V1". Two graded quizzes state every question's sources that
+// way and carry no Asset line at all, so reading only a single bare code left twenty questions
+// with no reference while the mapping sat in plain sight on the header.
+const SUFFIX_CODE = /^(M\d+L\d+V\d+)$/i;
+const SUFFIX_KIND = /^(Reading|Lab|Video|FAQ|Discussion Prompt|Case Study)\s+(M\d+L\d+)$/i;
+const SUFFIX_MAPS = new RegExp(
+  '(M\\d+L\\d+V\\d+)'                                          // M1L1V1
+  + '|(M\\d+L\\d+)\\s+(Reading|Lab|Video|FAQ)'                 // M1L3 Reading
+  + '|(Reading|Lab|Video|FAQ)\\s+(M\\d+L\\d+)', 'gi');         // Reading M1L3
+
+// "Correct Answer: C" states the key on its own line instead of starring the option.
+const CORRECT_ANSWER = /^Correct\s+Answer\s*[:–-]\s*\*?([\w])/i;
+// "Correct Explanation: ..." and "Incorrect Explanation - A: ..." replace "Feedback:".
+const CORRECT_EXPL = /^Correct\s+Explanation\s*[:–—-]\s*(.*)$/i;
+// "A - Incorrect. <text>" / "B - Correct. <text>" — a third explanation form, under a bare
+// "Explanation" heading. The letter leads and the verdict follows it, which is the reverse of
+// "Incorrect Explanation - A:". The final exam is written entirely this way.
+const LETTER_EXPL = /^([\w])\s*[—–-]\s*(Correct|Incorrect|Right|Wrong)\b\s*[.:,]?\s*(.*)$/i;
+const INCORRECT_EXPL = /^Incorrect\s+Explanation\s*[:–—-]*\s*([A-F])\s*[:–—-]\s*(.*)$/i;
 const ASSET = /^Asset\s*:\s*(.+)$/i;
 // "A:", "*A:", "**A:", "A." — four spellings of the same thing across these sources.
 //
@@ -86,10 +117,46 @@ const TRAILING_KINDS = ['Day-in-the-Life Video', 'Downloadable Resource', 'Cumul
   'Graded Quiz', 'Demo Video', 'Case Study', 'Final Exam', 'Reading', 'Video', 'Lab', 'FAQ'];
 const TRAILING_KIND = new RegExp(`^(.*\\S)\\s*\\((${TRAILING_KINDS.join('|')})\\)\\s*$`, 'i');
 
+// A citation can also be a MAPPING CODE with its title: "M1L2V1 — Why Some Work Must Stay
+// Human". Designing Human-AI Collaboration writes its final exam that way and separates the
+// items with COMMAS rather than semicolons, so the split looks for the next code rather than
+// for any comma — the titles contain commas of their own.
+const ASSET_CODE = /^(M(\d+)L(\d+)(?:V(\d+))?)\s*[—–-]\s*(.+)$/i;
+const CODE_SPLIT = /\s*[;,]\s*(?=M\d+L\d+)/i;
+
 function splitAssets(text) {
-  return String(text).split(';').map(part => {
+  const raw = String(text);
+  const parts = /M\d+L\d+/i.test(raw) ? raw.split(CODE_SPLIT) : raw.split(';');
+  return parts.map(part => {
     const t = clean(part);
     if (!t) return null;
+    // The code IS the mapping, so it is kept beside the title and the resolver can use it
+    // directly rather than matching prose against the outline.
+    // "Reading M4L1: A Scoping Cheat Sheet for First Agents" — the kind and the lesson code
+    // lead, the title follows the colon. Without this the whole line is taken as a title and
+    // matches nothing.
+    const kc = /^(Reading|Lab|Video|FAQ|Discussion Prompt|Case Study)\s+M(\d+)L(\d+)\s*:\s*(.+)$/i.exec(t);
+    if (kc) {
+      return {
+        kind: clean(kc[1]),
+        title: clean(kc[4]),
+        code: null,
+        statedModule: Number(kc[2]),
+        statedLesson: Number(kc[3]),
+        raw: t,
+      };
+    }
+    const ac = ASSET_CODE.exec(t);
+    if (ac) {
+      return {
+        kind: ac[4] ? 'Video' : null,
+        title: clean(ac[5]),
+        code: ac[1].toUpperCase(),
+        statedModule: Number(ac[2]),
+        statedLesson: Number(ac[3]),
+        raw: t,
+      };
+    }
     // The trailing form is tried FIRST: "Skills, Agents and Workflows: A Reading (Video)" would
     // otherwise be read as kind "Skills, Agents and Workflows" by the prefix pattern.
     const tk = TRAILING_KIND.exec(t);
@@ -275,9 +342,32 @@ function readQuizDoc(docxDir, label) {
     if (qh) {
       if (q) questions.push(q);
       pendingOption = null;
+      // The suffix is a TYPE, a MAPPING CODE or a KIND-plus-LESSON depending on the file, and
+      // sometimes absent. Classify it rather than storing it as a type, so a well-formed
+      // "Question 4 — Reading M2L1" does not get reported as a question of the wrong type, and
+      // so a "Q1 (M1L3V1)" header's mapping is not thrown away.
+      const suffix = clean(qh[3] || qh[4] || qh[5] || '');
+      const asCode = SUFFIX_CODE.exec(suffix);
+      const asKind = SUFFIX_KIND.exec(suffix);
+      // Every mapping the suffix names, in order. Empty for a suffix that is a question type.
+      const maps = [];
+      if (!asCode && !asKind) {
+        SUFFIX_MAPS.lastIndex = 0;
+        let mm;
+        while ((mm = SUFFIX_MAPS.exec(suffix)) !== null) {
+          if (mm[1]) maps.push({ code: mm[1].toUpperCase() });
+          else if (mm[2]) maps.push({ lesson: mm[2].toUpperCase(), kind: clean(mm[3]) });
+          else if (mm[5]) maps.push({ lesson: mm[5].toUpperCase(), kind: clean(mm[4]) });
+        }
+      }
       q = {
-        num: Number(qh[1]), type: clean(qh[2]), assets: [], assetRaw: '',
-        prompt: [], options: [], correct: null, starred: [],
+        num: Number(qh[1] || qh[2]),
+        type: (asCode || asKind || maps.length) ? 'Multiple choice' : (suffix || 'Multiple choice'),
+        headerCode: asCode ? asCode[1].toUpperCase() : null,
+        headerKind: asKind ? { kind: clean(asKind[1]), lesson: asKind[2].toUpperCase() } : null,
+        headerMaps: maps,
+        assets: [], assetRaw: '',
+        prompt: [], options: [], correct: null, starred: [], keyLine: null,
       };
       if (carried) {
         q.assetRaw = carried;
@@ -286,7 +376,14 @@ function readQuizDoc(docxDir, label) {
       }
       continue;
     }
-    if (!q) continue;
+    // An Asset line can precede the FIRST question header, not just a later one. Four practice
+    // quizzes here put it there, and dropping it left question 1 of each with no reference
+    // while every other question in the file had one.
+    if (!q) {
+      const pre = ASSET.exec(line);
+      if (pre) carried = carried ? carried + '; ' + clean(pre[1]) : clean(pre[1]);
+      continue;
+    }
 
     const as = ASSET.exec(line);
     if (as) {
@@ -300,6 +397,41 @@ function readQuizDoc(docxDir, label) {
         q.assetRaw = text;
         q.assets = splitAssets(text);
       }
+      pendingOption = null;
+      continue;
+    }
+
+    // "Correct Answer: C" — the key on its own line instead of a starred option.
+    const ca = CORRECT_ANSWER.exec(line);
+    if (ca) { q.keyLine = ca[1].toUpperCase(); pendingOption = null; continue; }
+
+    // "Correct Explanation: …" and "Incorrect Explanation — A: …" — the same information as
+    // "Feedback:", addressed to an option by letter rather than by position. The correct one
+    // names no letter, so it is attached to whichever option the key line identified.
+    const le = LETTER_EXPL.exec(line);
+    if (le && q.options.some(o => o.letter === le[1].toUpperCase())) {
+      const target = q.options.find(o => o.letter === le[1].toUpperCase());
+      target.text_feedback = clean(le[3]);
+      target.correct = IS_CORRECT.test(le[2]);
+      pendingOption = null;
+      continue;
+    }
+
+    const ie = INCORRECT_EXPL.exec(line);
+    if (ie) {
+      const target = q.options.find(o => o.letter === ie[1].toUpperCase());
+      if (target) { target.text_feedback = clean(ie[2]); target.correct = false; }
+      else issues.push(`Q${q.num}: an "Incorrect Explanation — ${ie[1]}" names an option the `
+        + 'question does not have');
+      pendingOption = null;
+      continue;
+    }
+    const ce = CORRECT_EXPL.exec(line);
+    if (ce) {
+      const target = q.keyLine && q.options.find(o => o.letter === q.keyLine);
+      if (target) { target.text_feedback = clean(ce[1]); target.correct = true; }
+      else issues.push(`Q${q.num}: a "Correct Explanation" with no "Correct Answer" line above `
+        + 'it, so there is no option to attach it to');
       pendingOption = null;
       continue;
     }
@@ -376,6 +508,26 @@ function readQuizDoc(docxDir, label) {
     issues.push(`Q${q.num}: unrecognised line after the options: ${line.slice(0, 60)}`);
   }
   if (q) questions.push(q);
+
+  // WHICH QUESTION DOES AN ASSET LINE BETWEEN TWO QUESTIONS BELONG TO? Both answers occur.
+  // Deploying and Orchestrating AI Agents puts it above the header it belongs to; Designing
+  // Human-AI Collaboration puts it below its own question's options. Read the wrong way round,
+  // every reference in the file shifts by one — wrong, and invisible once built.
+  //
+  // The leftover decides it. Carrying forward is the default, and it is right whenever it
+  // consumes cleanly. When instead it leaves an orphan AFTER the last question and the FIRST
+  // question with nothing, the file is the other kind, and every asset moves back one.
+  if (carried && questions.length && !questions[0].assets.length
+      && questions.every((qq, i) => i === 0 || qq.assets.length)) {
+    for (let i = 0; i < questions.length - 1; i++) {
+      questions[i].assets = questions[i + 1].assets;
+      questions[i].assetRaw = questions[i + 1].assetRaw;
+    }
+    const last = questions[questions.length - 1];
+    last.assetRaw = carried;
+    last.assets = splitAssets(carried);
+    carried = null;
+  }
   if (carried) {
     issues.push(`an "Asset: ${carried.slice(0, 50)}" line follows the last question with no `
       + 'question header after it, so it references nothing');
@@ -391,6 +543,23 @@ function readQuizDoc(docxDir, label) {
     if (!qq.assets.length) issues.push(`Q${qq.num}: no "Asset:" line — no reference can be written`);
     if (qq.options.length !== 4) issues.push(`Q${qq.num}: ${qq.options.length} options, expected 4`);
 
+    // A "Correct Answer: C" line is a third statement of the key, beside the star and the
+    // verdict word. Where it is the ONLY one, it is the key; where another exists too, the two
+    // must agree — a disagreement is reported and the question left unkeyed, exactly as a
+    // star that contradicts a verdict is.
+    if (qq.keyLine) {
+      const named = qq.options.find(o => o.letter === qq.keyLine);
+      if (!named) {
+        issues.push(`Q${qq.num}: "Correct Answer: ${qq.keyLine}" names an option the question `
+          + 'does not have');
+      } else if (qq.options.some(o => o.correct === true && o.letter !== qq.keyLine)) {
+        issues.push(`Q${qq.num}: "Correct Answer: ${qq.keyLine}" disagrees with the option whose `
+          + 'explanation says it is correct — this question needs a human decision');
+        qq.options.forEach(o => { o.correct = null; });
+      } else {
+        named.correct = true;
+      }
+    }
     const keyed = qq.options.filter(o => o.correct === true).map(o => o.letter);
     // A verdict-less option only matters when the question is NOT otherwise keyed. With exactly
     // one "Correct." among the four, the remaining three are wrong by construction.

@@ -182,7 +182,7 @@ one.
 `cstp-course-1` · `google-ads` · `google-ads-final` · `paid-social` · `paid-ads-11` ·
 `ai-toolkit-v2` · `digital-marketing` · `shopify` · `websites-15` · `ai-products` ·
 `soft-skills` · `digital-transformation` · `deploying-ai-agents` · `bpa-course-1` ·
-`agentic-teams-c1`
+`agentic-teams-c1` · `agentic-teams-c2`
 
 `google-ads-final` is the rewritten assessment for the same course as `google-ads`, against the
 same outline. It supersedes it: per-option explanations rather than one shared across four, a
@@ -523,6 +523,13 @@ grep -c '<w:br'    work/<slug>/quiz/word/document.xml   # line breaks inside par
 | A final exam citing no assets at all, and followed by a score-interpretation table | `agentic-teams-c1` |
 | An end marker wrapped in asterisks (`*----- End of importable content -----*`) | `agentic-teams-c1` |
 | Underscore-separated filename codes (`M5_L1_...`), where `` never matches after the digit | `agentic-teams-c1` |
+| TWO question grammars mixed within one course, and within single files | `agentic-teams-c2` |
+| `Q1 (M1L3V1)` headers carrying the mapping, beside `Question N` headers that do not | `agentic-teams-c2` |
+| A header suffix that is a mapping LIST (`M1L1V1 + M1L3 Reading`), not a question type | `agentic-teams-c2` |
+| `Correct Answer: C` on its own line instead of a starred option | `agentic-teams-c2` |
+| `Correct Explanation:` / `Incorrect Explanation — A:` / `A — Incorrect.` instead of `Feedback:` | `agentic-teams-c2` |
+| `Asset:` lines BELOW their own question rather than above the next one — decided by the leftover | `agentic-teams-c2` |
+| Assets as `M1L2V1 — Title`, comma-separated, where titles contain commas | `agentic-teams-c2` |
 
 ### When a source states its mapping twice
 
