@@ -261,7 +261,24 @@ function buildBody(spec, warnings) {
       warnings.push(`${where} Q${q.num}: the prompt opens with the one-word label "${label[1]}:", `
         + 'which the importer reads as an answer option. Kept verbatim — import-test this file.');
     }
-    P.push(para([[text]]));
+    // THE PROMPT KEEPS THE SOURCE'S PARAGRAPHS, at the course owner's instruction. A scenario
+    // written as three paragraphs and a closing question reaches the learner that way rather
+    // than as one block of text.
+    //
+    // This overturns the repo's oldest rule — that a second prompt paragraph is an unmatched
+    // line which can fail the WHOLE document. That rule rested on a single failed upload which
+    // was never isolated, and its close cousin ("a free-standing Refer to paragraph rejects the
+    // question") was disproved outright by managing-break-probe.js. The gap between paragraphs
+    // is paragraph SPACING, never an empty paragraph: a genuinely blank line is a separate risk
+    // and is not part of this change.
+    //
+    // --join-prompt restores the single-line form. If an import ever fails on a document built
+    // from here on, this is the first thing to try.
+    const paras = !process.argv.includes('--join-prompt')
+      && Array.isArray(q.promptParas) && q.promptParas.length > 1
+      ? q.promptParas.map(x => String(x).trim()).filter(Boolean)
+      : [text];
+    paras.forEach((t, i) => P.push(para([[t]], { gapAfter: i < paras.length - 1 })));
     P.push(blank());
 
     if (!q.correct) throw new Error(`${where} Q${q.num}: no answer key`);

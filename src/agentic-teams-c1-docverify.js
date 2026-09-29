@@ -350,7 +350,14 @@ function verifyAll(OUT, files, summaryNoun) {
       // WHOLE document, not just this question.
       const firstOpt = blk.findIndex(l => /^\*?[A-F]:\s/.test(l));
       const gotPrompt = blk.slice(1, firstOpt).map(p => p.replace(/\s+/g, ' ').trim());
-      const wantPrompt = [String(src.prompt).replace(/\s+/g, ' ').trim()].filter(Boolean);
+      // The prompt keeps the source's paragraphs, so the expectation is the paragraph ARRAY,
+      // re-derived from the parsed source rather than taken from the built document. A build
+      // run with --join-prompt collapses them, and is checked against the joined form instead.
+      const srcParas = (Array.isArray(src.promptParas) && src.promptParas.length
+        ? src.promptParas : [src.prompt]).map(x => String(x).replace(/\s+/g, ' ').trim())
+        .filter(Boolean);
+      const joined = [String(src.prompt).replace(/\s+/g, ' ').trim()].filter(Boolean);
+      const wantPrompt = gotPrompt.length === srcParas.length ? srcParas : joined;
       if (JSON.stringify(gotPrompt) !== JSON.stringify(wantPrompt))
         bad(`${tag} prompt text mismatch\n      got:  ${JSON.stringify(gotPrompt)}`
           + `\n      want: ${JSON.stringify(wantPrompt)}`);
@@ -386,7 +393,9 @@ function verifyAll(OUT, files, summaryNoun) {
         : /^\*?[A-F]:\s/.test(l) ? 'O'
         : /^Feedback:\s/.test(l) ? 'F'
         : 'P');
-      const wantShape = 'HP' + 'OF'.repeat(src.options.length);
+      // One P per prompt paragraph. Anything else in that span is an unrecognised line, which
+      // is the failure this grammar check exists to catch.
+      const wantShape = 'H' + 'P'.repeat(wantPrompt.length) + 'OF'.repeat(src.options.length);
       if (shape.join('') !== wantShape)
         bad(`${tag} line grammar is ${shape.join('')}, expected ${wantShape}`
           + `\n      offending lines: ${JSON.stringify(blk.filter((l, i) =>

@@ -119,6 +119,9 @@ for (const d of docs) {
       num: q.num,
       type: q.type,
       prompt: q.prompt.join(' '),
+      // The paragraph structure the source actually has, kept beside the joined form so a
+      // build can be made either way without re-parsing. --keep-paragraphs uses this.
+      promptParas: q.prompt.slice(),
       assetRaw: q.assetRaw,
       refs: q.refs,
       correct: q.correct,

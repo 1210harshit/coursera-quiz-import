@@ -73,6 +73,9 @@ for (const d of L.listDocs()) {
       num: q.num,
       type: q.type,
       prompt: q.prompt.join(' '),
+      // The paragraph structure the source actually has. The builder writes these as separate
+      // paragraphs; `prompt` is kept as the joined form for checks that want one string.
+      promptParas: q.prompt.slice(),
       assetRaw: q.assetRaw,
       refs: q.refs,
       correct: q.correct,
