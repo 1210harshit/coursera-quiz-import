@@ -182,7 +182,13 @@ one.
 `cstp-course-1` · `google-ads` · `google-ads-final` · `paid-social` · `paid-ads-11` ·
 `ai-toolkit-v2` · `digital-marketing` · `shopify` · `websites-15` · `ai-products` ·
 `soft-skills` · `digital-transformation` · `deploying-ai-agents` · `bpa-course-1` ·
-`agentic-teams-c1` · `agentic-teams-c2`
+`agentic-teams-c1` · `agentic-teams-c2` · `ai-automation` · `oversight` · `ai-workflows`
+
+`ai-automation`, `oversight` and `ai-workflows` are one-document-per-quiz courses that arrived
+with **no syllabus**. Each has its own `<slug>-parse.js` writing `quizzes.json`, feeding the
+shared `quiz-import-build.js <slug>` and `quiz-import-verify.js <slug>`; module and lesson are
+resolved from the practice quiz that cites each asset title. See the README section "One
+document per quiz, no outline" for the run-through.
 
 `google-ads-final` is the rewritten assessment for the same course as `google-ads`, against the
 same outline. It supersedes it: per-option explanations rather than one shared across four, a

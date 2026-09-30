@@ -255,8 +255,16 @@ function parseBlock(blk, where) {
   if (keys.length > 1) die(`${where}: key signals disagree: ${keySignals.map(s => s.join('=')).join(', ')}`);
 
   if (!promptLines.length) die(`${where}: no prompt`);
+  // Standing convention 4 (SETUP §6): Coursera rejects a question whose options repeat
+  // ("Duplicate answers are not allowed") and nothing else would notice.
+  const seenOpt = new Map();
+  for (const o of options) {
+    const k = o.text.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (seenOpt.has(k)) die(`${where}: options ${seenOpt.get(k)} and ${o.letter} are the same text`);
+    seenOpt.set(k, o.letter);
+  }
   const prompt = promptLines.map((l, i) => (i === 0 ? l.replace(QNUM_RE, '') : l));
-  if (prompt.length > 1) warn(`${where}: prompt is ${prompt.length} lines; the builder joins them into one`);
+  if (prompt.length > 1) warn(`${where}: prompt is ${prompt.length} paragraphs; kept as the source has them (--join-prompt joins them)`);
   for (const o of options) if (!o.text.trim()) die(`${where}: option ${o.letter} empty`);
 
   return { sourceNum: +head[1], layout, assets, prompt, options, correct: keys[0], feedback };

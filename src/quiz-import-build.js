@@ -64,6 +64,10 @@ function stripVerdict(fb) {
 // Reference on its own line, below the explanation. See the note at the feedback line
 // below; --no-br restores the single-line form.
 const REF_OWN_LINE = !process.argv.includes('--no-br');
+// Standing convention 3 (SETUP §6): the prompt keeps the source's paragraphs, separated by
+// paragraph spacing. --join-prompt restores the single-paragraph form, the first thing to try
+// if an import fails.
+const JOIN_PROMPT = process.argv.includes('--join-prompt');
 
 // "Refer to Module 1 Lesson 1 Video: Judging Assistant Responses"
 // "Refer to Module 3 Lesson 2 Video: Designing a Reporting Cadence; Reading: Dashboard Design Guide ..."
@@ -258,6 +262,7 @@ function buildBody(mo) {
     const promptParas = (Array.isArray(q.prompt) ? q.prompt : [q.prompt])
       .map((line, i) => (i === 0 ? line.replace(/^\s*Scenario\s*:\s*/i, '') : line))
       .filter(t => t.trim());
+    if (JOIN_PROMPT && promptParas.length > 1) promptParas.splice(0, promptParas.length, promptParas.join(' '));
 
     // A prompt line beginning "Word:" is read by the importer as an answer option — the
     // failure that rejected every scenario question on osha. The documented failure is a

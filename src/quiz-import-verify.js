@@ -21,6 +21,7 @@ const quizzes = JSON.parse(fs.readFileSync(path.join(SP, SLUG, 'quizzes.json'), 
 const SRC = path.join(SP, SLUG, 'src');
 const REF_OWN_LINE = !process.argv.includes('--no-br');
 const SEP = REF_OWN_LINE ? '\n' : ' ';
+const JOIN_PROMPT = process.argv.includes('--join-prompt');
 const KIND = { practice: 'Practice Quiz', graded: 'Graded Quiz', final: 'Final Exam' };
 
 const dec = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
@@ -164,15 +165,22 @@ for (const qz of quizzes) {
     const ref = expectRef(src);
     if (blk[0] !== `Question ${src.num} - multiple choice, shuffle`) bad(`${tag} header wrong: "${blk[0]}"`);
 
+    // Prompt paragraphs are kept as the source has them (standing convention 3), unless the
+    // document was built with --join-prompt.
+    const wantParas = JOIN_PROMPT ? [squash(src.prompt.join(' '))] : src.prompt.map(squash).filter(Boolean);
     const shape = blk.map(l => /^Question \d+ - /.test(l) ? 'H' : /^\*?[A-D]:\s/.test(l) ? 'O'
       : /^Feedback:\s/.test(l) ? 'F' : 'P').join('');
-    if (shape !== 'HP' + 'OF'.repeat(4)) bad(`${tag} line grammar is ${shape}, expected HPOFOFOFOF`);
+    const wantShape = 'H' + 'P'.repeat(wantParas.length) + 'OF'.repeat(4);
+    if (shape !== wantShape) bad(`${tag} line grammar is ${shape}, expected ${wantShape}`);
 
-    const prompt = blk[1] || '';
-    const wantPrompt = squash(src.prompt.join(' '));
-    if (prompt !== wantPrompt) bad(`${tag} prompt mismatch\n      got:  ${prompt}\n      want: ${wantPrompt}`);
-    if (/^[A-Za-z.]+\d*\s*:/.test(prompt) && /^\S+:/.test(prompt))
-      bad(`${tag} prompt opens with a one-word label: "${prompt.slice(0, 30)}"`);
+    const gotParas = blk.slice(1, 1 + wantParas.length);
+    if (JSON.stringify(gotParas) !== JSON.stringify(wantParas))
+      bad(`${tag} prompt mismatch\n      got:  ${JSON.stringify(gotParas)}\n      want: ${JSON.stringify(wantParas)}`);
+    gotParas.forEach((p, i) => {
+      if (/^\S+:/.test(p) && !/\s/.test(p.split(':')[0]))
+        bad(`${tag} prompt paragraph ${i + 1} opens with a one-word label: "${p.slice(0, 30)}"`);
+    });
+    if (wantParas.length > 1) console.log(`   NOTE ${tag} prompt kept as ${wantParas.length} paragraphs`);
     // A question replaced through fixes.json is by definition not in the source; an option a
     // fix touched is exempt only for that option. Everything else is still checked.
     const fixed = new Set(src.fixes || []);
@@ -188,6 +196,9 @@ for (const qz of quizzes) {
     if (!replaced) srcPrompt.forEach(p => { if (!inSource(p)) bad(`${tag} prompt text not found in source: "${p.slice(0, 60)}"`); });
 
     const opts = blk.filter(l => /^\*?[A-D]:\s/.test(l));
+    // Standing convention 4: duplicate options are refused by Coursera.
+    const optKeys = opts.map(l => l.replace(/^\*?[A-D]:\s*/, '').toLowerCase().replace(/\s+/g, ' ').trim());
+    if (new Set(optKeys).size !== optKeys.length) bad(`${tag} options are not distinct`);
     const fbs = blk.filter(l => /^Feedback:\s/.test(l));
     const starred = opts.filter(l => l.startsWith('*'));
     if (starred.length !== 1) bad(`${tag} has ${starred.length} starred answers`);
@@ -238,9 +249,11 @@ for (const qz of quizzes) {
       }
     }
 
-    // Asset types vary by course: Video, Reading, Lab, Downloadable Resource, Demo Video, FAQ ...
+    // Asset types vary by course: Video, Reading, Lab, Downloadable Resource, Demo Video ...
+    // but never a bare FAQ — it is published as a Reading (standing convention 2).
     if (!/^Refer to Module \d+( Lesson \d+)? [A-Z][A-Za-z]*(?: [A-Z][A-Za-z]*)*: \S/.test(ref)) bad(`${tag} bad reference "${ref}"`);
     if (/\(\s*\d+\s*mins?\)|\(Lesson \d+\)|\bM\d+L\d+\b/i.test(ref)) bad(`${tag} annotation left in reference "${ref}"`);
+    if (/(?:^Refer to |; )(?:Module \d+(?: Lesson \d+)? )?FAQ:/.test(ref)) bad(`${tag} FAQ used as a label: "${ref}"`);
     for (const a of src.assets) if (!inSource(a.title)) bad(`${tag} asset title not in source: "${a.title}"`);
     nQ++;
   });

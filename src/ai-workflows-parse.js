@@ -121,6 +121,10 @@ function objectivesOf(ls, stop) {
 }
 
 // ---------- assets ----------
+// Source kind -> the label the learner sees. One row per kind; see SETUP §6, convention 2.
+const REFERENCE_AS = {
+  FAQ: { label: 'Reading', titlePrefix: 'FAQ: ' },
+};
 function parseAssets(text, where) {
   return text.split(';').map(s => s.trim()).filter(Boolean).map(s => {
     const m = ASSET_ITEM_RE.exec(s);
@@ -137,6 +141,10 @@ function parseAssets(text, where) {
     }
     // Multi-word types keep their source capitalisation ("Downloadable Resource"); FAQ stays FAQ.
     const type = m[1].split(' ').map(w => w === w.toUpperCase() ? w : w[0].toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    // Standing convention 2 (SETUP §6): label by the item type the learner sees. An FAQ is
+    // published as a Reading, so it is labelled "Reading:" and keeps "FAQ: " inside its title.
+    const as = REFERENCE_AS[type];
+    if (as) return { type: as.label, title: as.titlePrefix + title, lessonHint };
     return { type, title, lessonHint };
   });
 }
@@ -251,8 +259,16 @@ function parseBlock(blk, where) {
   if (keys.length > 1) die(`${where}: key signals disagree: ${keySignals.map(s => s.join('=')).join(', ')}`);
 
   if (!promptLines.length) die(`${where}: no prompt`);
+  // Standing convention 4 (SETUP §6): Coursera rejects a question whose options repeat
+  // ("Duplicate answers are not allowed") and nothing else would notice.
+  const seenOpt = new Map();
+  for (const o of options) {
+    const k = o.text.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (seenOpt.has(k)) die(`${where}: options ${seenOpt.get(k)} and ${o.letter} are the same text`);
+    seenOpt.set(k, o.letter);
+  }
   const prompt = promptLines.map((l, i) => (i === 0 ? l.replace(QNUM_RE, '') : l));
-  if (prompt.length > 1) warn(`${where}: prompt is ${prompt.length} lines; the builder joins them into one`);
+  if (prompt.length > 1) warn(`${where}: prompt is ${prompt.length} paragraphs; kept as the source has them (--join-prompt joins them)`);
   for (const o of options) if (!o.text.trim()) die(`${where}: option ${o.letter} empty`);
 
   return { sourceNum: +head[1], layout, assets, prompt, options, correct: keys[0], feedback };

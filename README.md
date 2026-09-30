@@ -249,6 +249,10 @@ reference resolution, fixes and warnings.
 - **Fidelity.** The verifier re-finds every prompt, option and explanation verbatim in its
   source document, **in order**, so an explanation attached to the wrong option fails even
   though the builder copied it faithfully.
+- **Standing conventions.** All four in `SETUP.md` §6 hold: the reference line above; an FAQ
+  labelled `Reading: FAQ: <title>` (one row in `REFERENCE_AS` in the parser); prompt
+  paragraphs kept, with `--join-prompt` on the builder and verifier to join them; and options
+  checked distinct at parse time and on the built document.
 
 ---
 
