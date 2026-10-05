@@ -209,6 +209,51 @@ Override the root with the `QUIZ_WORK` environment variable.
 **See [SETUP.md](SETUP.md)** for installation, the full run-through, how to onboard a new
 course, and troubleshooting.
 
+### One document per quiz, no outline
+
+Some courses arrive as one `.docx` per quiz (every practice quiz, graded quiz and final exam
+separate) with no course outline. Those use a per-course parser feeding one shared builder and
+verifier:
+
+```
+<course>-parse.js          N x .docx ->  quizzes.json   every quiz, its settings table, questions, assets
+quiz-import-build.js       json      ->  N x .docx      one import document per SOURCE document
+quiz-import-verify.js      .docx     ->  pass/fail      against quizzes.json AND the original sources
+```
+
+```bash
+node src/oversight-parse.js > work/oversight/quizzes.json
+node src/quiz-import-build.js  oversight work/oversight/dist
+node src/quiz-import-verify.js oversight work/oversight/dist
+```
+
+Courses: `ai-automation`, `oversight`, `ai-workflows`. Sources are unzipped into
+`work/<course>/src/<file name>/`. Each parser takes `--report` to show layouts, lesson and
+reference resolution, fixes and warnings.
+
+- **Layouts.** A question may be lettered (`A:` / `*C:` / `**A:`), unlettered with alternating
+  explanations, or keyed (`Correct Answer: B` plus labelled explanations), and one file can mix
+  them. The key is read from every signal a block offers; the signals must agree.
+- **References.** Assets are named by title, never by number, so the reference names the type:
+  `Refer to Module 1 Lesson 1 Video: <title>; Reading: <title>`. Module and lesson come from
+  the practice quiz that cites each title.
+- **Names.** Files are named from the documents: `M1L1 - <lesson> - Practice Quiz.docx`,
+  `M1 - <module> - Graded Quiz.docx`, `M5L1 - <course> - Final Exam.docx`.
+- **Punctuation.** `lib-punctuation.js` runs in every parser: missing end punctuation is added
+  (`?` for a question, `.` otherwise), mismatched or stray quotes are corrected. Options written
+  as unpunctuated labels in all four places are left alone. Each change is recorded, and the
+  verifier checks the original wording against the source.
+- **Owner fixes.** Anything else the course owner asks to change lives in
+  `work/<course>/fixes.json` (git-ignored — it is course content). Each fix names the source
+  text it expects, so a revised source never has a stale fix silently applied.
+- **Fidelity.** The verifier re-finds every prompt, option and explanation verbatim in its
+  source document, **in order**, so an explanation attached to the wrong option fails even
+  though the builder copied it faithfully.
+- **Standing conventions.** All four in `SETUP.md` §6 hold: the reference line above; an FAQ
+  labelled `Reading: FAQ: <title>` (one row in `REFERENCE_AS` in the parser); prompt
+  paragraphs kept, with `--join-prompt` on the builder and verifier to join them; and options
+  checked distinct at parse time and on the built document.
+
 ---
 
 ## What the verifiers check
