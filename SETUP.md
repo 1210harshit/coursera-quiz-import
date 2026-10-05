@@ -182,7 +182,7 @@ one.
 `cstp-course-1` · `google-ads` · `google-ads-final` · `paid-social` · `paid-ads-11` ·
 `ai-toolkit-v2` · `digital-marketing` · `shopify` · `websites-15` · `ai-products` ·
 `soft-skills` · `digital-transformation` · `deploying-ai-agents` · `bpa-course-1` ·
-`agentic-teams-c1` · `agentic-teams-c2`
+`agentic-teams-c1` · `agentic-teams-c2` · `bpa-course-3`
 
 `google-ads-final` is the rewritten assessment for the same course as `google-ads`, against the
 same outline. It supersedes it: per-option explanations rather than one shared across four, a
@@ -414,9 +414,10 @@ These are the course owner's instructions, current as of 2026-09-29. They apply 
 Delivered courses keep whatever form they shipped with — changing one means re-uploading it,
 which is the course owner's decision, not the pipeline's.
 
-**Start from `agentic-teams-c1`.** It is the most recent IBM-format pipeline and already
+**Start from `agentic-teams-c2`.** It is the most recent IBM-format pipeline and already
 carries every convention below, so copying it is how a new course inherits them rather than
-re-deriving them. For a non-IBM source shape, copy the closest match from the table further
+re-deriving them. It also reads the widest set of source grammars — `agentic-teams-c1` is a
+subset of it, and `bpa-course-3` was copied from it unchanged apart from the slug. For a non-IBM source shape, copy the closest match from the table further
 down and port these conventions across by hand.
 
 **1. The reference line.** Module and lesson spelled out in full words, the asset kind carrying
