@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { spellOut, attach, trailer, isPlain, wrap, REF_OWN_LINE, SEP }
+const { spellOut, attach, trailer, isPlain, wrap, REF_OWN_LINE, SEP, DIAGNOSTIC_REFERENCE }
   = require('./lean-six-sigma-lib-refer.js');
 const JOIN_PROMPT = process.argv.includes('--join-prompt');
 
@@ -223,13 +223,17 @@ for (const mo of mods) {
         bad(`${tag} option ${o.letter} mismatch\n      got:  ${opts[oi]}\n      want: ${wantOpt}`);
 
       // required shape: ONE line — "Feedback: <explanation> (Refer to M1L1V1: ...)"
-      const wantFb = 'Feedback: ' + attach(stripVerdict(src.feedback[o.letter]), wantRef, STYLE_KEY);
+      const wantFb = DIAGNOSTIC_REFERENCE
+        ? 'Feedback: ' + attach(stripVerdict(src.feedback[o.letter]), wantRef, STYLE_KEY)
+        : 'Feedback: ' + stripVerdict(src.feedback[o.letter]);
       if (fbs[oi] !== wantFb) {
         bad(`${tag} feedback ${o.letter} mismatch\n      got:  ${JSON.stringify(fbs[oi])}\n      want: ${JSON.stringify(wantFb)}`);
       } else {
         const breaks = (fbs[oi].match(/\n/g) || []).length;
-        if (breaks !== (REF_OWN_LINE ? 1 : 0))
-          bad(`${tag} feedback ${o.letter}: ${breaks} line break(s), expected ${REF_OWN_LINE ? 1 : 0}`);
+        const wantBreaks = DIAGNOSTIC_REFERENCE && REF_OWN_LINE ? 1 : 0;
+        if (breaks !== wantBreaks)
+          bad(`${tag} feedback ${o.letter}: ${breaks} line break(s), expected ${wantBreaks}`);
+        if (DIAGNOSTIC_REFERENCE) {
         if (!fbs[oi].endsWith(trailer(wantRef, STYLE_KEY)))
           bad(`${tag} feedback ${o.letter}: reference not at the end, separated by `
             + `${REF_OWN_LINE ? 'its own paragraph' : 'one space'}`);
@@ -248,6 +252,10 @@ for (const mo of mods) {
             bad(`${tag} feedback ${o.letter}: reference is bracketed, but this course is plain`);
         } else if (!/\(Refer to Module \d+: .+\)$/.test(fbs[oi])) {
           bad(`${tag} feedback ${o.letter}: reference is not wrapped in brackets at the end`);
+        }
+        } else if (/Refer to Module/.test(fbs[oi])) {
+          // The opposite failure is the one that matters now: a reference that should be gone.
+          bad(`${tag} feedback ${o.letter}: carries a reference, but the diagnostic must not`);
         }
         // no leftover verdict word at the start of the explanation
         if (/^Feedback:\s*(Correct|Incorrect)\b/i.test(fbs[oi]))
@@ -325,7 +333,8 @@ for (const mo of mods) {
   if (!/will not be imported/.test(guide)) bad('reference disclaimer missing');
   if (lines.slice(0, s).some(l => /^Question \d+ - /.test(l))) bad('question found before start marker');
 
-  console.log(`   ${idx.length} questions | ${refCount} feedback blocks with reference line | ` +
+  console.log(`   ${idx.length} questions | ${refCount} feedback blocks`
+    + `${DIAGNOSTIC_REFERENCE ? ' with reference line' : ', no reference line (by design)'} | ` +
     `${wantSections.length} template sections in order | ${new Set(used).size} live hyperlinks | package OK`);
   fs.rmSync(ex, { recursive: true, force: true });
 }

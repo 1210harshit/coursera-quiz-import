@@ -1,6 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { spellOut, attach, trailer, isPlain, wrap, REF_OWN_LINE, SEP }
+  = require('./performance-appraisals-lib-refer.js');
+const JOIN_PROMPT = process.argv.includes('--join-prompt');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const OUT = process.argv[2];
@@ -16,8 +19,7 @@ const dec = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g
 const stripVerdict = fb =>
   String(fb).replace(/^(?:\((?:Correct|Incorrect)\)|(?:Correct|Incorrect)[.:,!])\s*/i, '');
 
-const spellOut = code => String(code).replace(
-  /^M(\d+)L(\d+)V(\d+)$/, (s, mo, le, vi) => `Module ${mo} Lesson ${le} Video ${vi}`);
+
 
 const referLine = m => {
   const v = VIDEOS[m];
@@ -129,9 +131,23 @@ for (const mo of mods) {
     if (/importable content starts here|end of importable content/i.test(l))
       bad(`prose collides with a marker string at line ${i}: "${l.slice(0, 70)}"`);
   });
-  const secPairs = lines.slice(s + 1, e)
-    .map((l, i) => ({ l, x: xmls[s + 1 + i] }))
-    .filter(p => p.l);
+  // The reference is its own zero-spaced paragraph sitting IMMEDIATELY after its Feedback:
+  // paragraph — nothing between, which the importer would read as the end of the feedback.
+  // Fold each such pair back into one logical line joined by SEP, so every per-option check
+  // below reads one feedback line whichever form the document is in. A reference paragraph
+  // anywhere else is left unfolded, and the checks below then reject it.
+  const rawPairs = lines.slice(s + 1, e).map((l, i) => ({ l, x: xmls[s + 1 + i] }));
+  const folded = [];
+  rawPairs.forEach(p => {
+    const prev = folded[folded.length - 1];
+    if (REF_OWN_LINE && /^Refer to Module /.test(p.l) && prev && /^Feedback: /.test(prev.l)) {
+      if (!/w:after="0"/.test(p.x))
+        bad(`reference paragraph is not zero-spaced: "${p.l.slice(0, 60)}"`);
+      prev.l += SEP + p.l;
+      prev.x += p.x;
+    } else folded.push({ ...p });
+  });
+  const secPairs = folded.filter(p => p.l);
   const sec = secPairs.map(p => p.l);
 
   // Nothing inside the importable region may carry an intra-paragraph line break:
@@ -169,6 +185,7 @@ for (const mo of mods) {
     const src = mo.questions[k];
     const tag = `Q${src.num}`;
     const wantRef = referLine(src.mapped);
+    const STYLE_KEY = `practice:M${mo.num}L${mo.lesson}`;
 
     if (blk[0] !== `Question ${src.num} - multiple choice, shuffle`)
       bad(`${tag} header wrong: "${blk[0]}"`);
@@ -177,6 +194,23 @@ for (const mo of mods) {
     const fbs = blk.filter(l => /^Feedback:\s/.test(l));
     if (opts.length !== 4) bad(`${tag} has ${opts.length} options`);
     if (fbs.length !== 4) bad(`${tag} has ${fbs.length} feedback blocks`);
+
+    // Two options with the SAME text. Coursera refuses the question outright with
+    // "Duplicate answers are not allowed", and nothing else here would catch it: the counts,
+    // the key, the feedback blocks and the reference are all correct. Checked on the BUILT
+    // document, not only at parse time, so it cannot reach an upload.
+    {
+      const seenOpt = new Map();
+      opts.forEach(l => {
+      const t = l.replace(/^\*?[A-F]:\s*/, '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const letter = (/^\*?([A-F]):/.exec(l) || [, '?'])[1];
+      if (!t) return;
+      if (seenOpt.has(t)) {
+        bad(`${tag} options ${seenOpt.get(t)} and ${letter} have identical text — Coursera `
+        + 'rejects the question ("Duplicate answers are not allowed")');
+      } else seenOpt.set(t, letter);
+      });
+    }
 
     const starred = opts.filter(l => l.startsWith('*'));
     if (starred.length !== 1) bad(`${tag} has ${starred.length} starred answers`);
@@ -189,15 +223,17 @@ for (const mo of mods) {
         bad(`${tag} option ${o.letter} mismatch\n      got:  ${opts[oi]}\n      want: ${wantOpt}`);
 
       // required shape: ONE line — "Feedback: <explanation> (Refer to Module1 Lesson1 Video1: ...)"
-      const wantFb = 'Feedback: ' + stripVerdict(src.feedback[o.letter]) + ' (' + wantRef + ')';
+      const wantFb = 'Feedback: ' + attach(stripVerdict(src.feedback[o.letter]), wantRef, STYLE_KEY);
       if (fbs[oi] !== wantFb) {
         bad(`${tag} feedback ${o.letter} mismatch\n      got:  ${JSON.stringify(fbs[oi])}\n      want: ${JSON.stringify(wantFb)}`);
       } else {
-        if (fbs[oi].includes('\n'))
-          bad(`${tag} feedback ${o.letter}: contains a line break — must be one line`);
-        if (!fbs[oi].endsWith(' (' + wantRef + ')'))
-          bad(`${tag} feedback ${o.letter}: bracketed reference not at end, separated by one space`);
-        if (!/^Refer to Module \d+ Lesson \d+ Video \d+: \S/.test(wantRef))
+        const breaks = (fbs[oi].match(/\n/g) || []).length;
+        if (breaks !== (REF_OWN_LINE ? 1 : 0))
+          bad(`${tag} feedback ${o.letter}: ${breaks} line break(s), expected ${REF_OWN_LINE ? 1 : 0}`);
+        if (!fbs[oi].endsWith(trailer(wantRef, STYLE_KEY)))
+          bad(`${tag} feedback ${o.letter}: reference not at the end, separated by `
+            + `${REF_OWN_LINE ? 'its own paragraph' : 'one space'}`);
+        if (!/^Refer to Module \d+ Lesson \d+ Video: \S/.test(wantRef))
           bad(`${tag} feedback ${o.letter}: bad reference line "${wantRef}"`);
         // brackets must be balanced and the reference fully enclosed
         const opens = (fbs[oi].match(/\(/g) || []).length;
@@ -206,8 +242,12 @@ for (const mo of mods) {
           bad(`${tag} feedback ${o.letter}: unbalanced brackets (${opens} open, ${closes} close)`);
         // A video title may itself contain brackets (e.g. "... Analyses (JHA)"), so the
         // wrapper may legitimately nest. Require the wrapper, not the absence of nesting.
-        if (!/\(Refer to Module \d+ Lesson \d+ Video \d+: .+\)$/.test(fbs[oi]))
+        if (isPlain(STYLE_KEY)) {
+          if (/\(Refer to /.test(fbs[oi]))
+            bad(`${tag} feedback ${o.letter}: reference is bracketed, but this course is plain`);
+        } else if (!/\(Refer to Module \d+ Lesson \d+ Video: .+\)$/.test(fbs[oi])) {
           bad(`${tag} feedback ${o.letter}: reference is not wrapped in brackets at the end`);
+        }
         // no leftover verdict word at the start of the explanation
         if (/^Feedback:\s*(Correct|Incorrect)\b/i.test(fbs[oi]))
           bad(`${tag} feedback ${o.letter}: verdict word still present -> "${fbs[oi].slice(0, 50)}"`);

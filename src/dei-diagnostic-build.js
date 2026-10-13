@@ -16,7 +16,7 @@
 const fs = require('fs');
 const path = require('path');
 const { zipDir } = require('./lib-zipwriter');
-const { spellOut, attach, trailer, isPlain, wrap, REF_OWN_LINE, SEP }
+const { spellOut, attach, trailer, isPlain, wrap, REF_OWN_LINE, SEP, DIAGNOSTIC_REFERENCE }
   = require('./dei-lib-refer.js');
 const JOIN_PROMPT = process.argv.includes('--join-prompt');
 
@@ -278,7 +278,10 @@ function buildBody(mo) {
       // settled this encoding, and pass --no-br to both builder and verifier for one line.
       const fbBody = 'Feedback: ' + stripVerdict(q.feedback[o.letter] || '');
       const fbRef = wrap(refer, STYLE_KEY);
-      if (REF_OWN_LINE) {
+      if (!DIAGNOSTIC_REFERENCE) {
+        // Feedback alone: see DIAGNOSTIC_REFERENCE in the lib for why this quiz carries none.
+        P.push(para([[fbBody]]));
+      } else if (REF_OWN_LINE) {
         P.push(para([[fbBody]]));
         P.push(para([[fbRef]], { tight: true }));
       } else {

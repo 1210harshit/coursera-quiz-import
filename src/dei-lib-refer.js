@@ -6,7 +6,7 @@
 //
 // THE FORM. Module and lesson spell out in full words and the asset kind carries NO number:
 //
-//   Feedback: <explanation> Refer to Module 1 Lesson 1 Video: The Fundamentals and Why the Three Words Differ
+//   Feedback: <explanation> Refer to Module 1 Lesson 1 Video: Benefits for Body, Mind, Emotions, and Spirit
 //
 // The title is what identifies the item for the learner, so the ordinal is internal bookkeeping
 // and never reaches them. quiz.json and outline.json keep the compact M1L1V1 form and every
@@ -36,7 +36,7 @@ const PLAIN_EXCEPTIONS = new Set();
 // Feedback: paragraph, with nothing between them:
 //
 //   Feedback: <explanation>
-//   Refer to Module 1 Lesson 1 Video: The Fundamentals and Why the Three Words Differ
+//   Refer to Module 1 Lesson 1 Video: Benefits for Body, Mind, Emotions, and Spirit
 //
 // Settled by an upload of src/managing-break-probe.js (2026-09-28), which tried ten encodings
 // in one document. Every <w:br/> variant — in one run, in its own run, typed textWrapping, a
@@ -47,6 +47,14 @@ const PLAIN_EXCEPTIONS = new Set();
 //
 // --no-br restores the single-line form, "Feedback: <explanation> Refer to ...", on both the
 // builder and the verifier at once.
+// THE PRE-COURSE DIAGNOSTIC CARRIES NO REFERENCE AT ALL. Asked for on 2026-10-08. The
+// diagnostic runs BEFORE any video has been watched, so pointing a learner at a module they
+// have not reached yet is noise rather than help. The graded and practice quizzes keep theirs,
+// which is why this is its own switch rather than a change to the style above. The diagnostic
+// builder and its verifier both read it, so they cannot disagree about whether a reference
+// belongs there -- set it to true and the module-level reference comes back.
+const DIAGNOSTIC_REFERENCE = false;
+
 const REF_OWN_LINE = !process.argv.includes('--no-br');
 const SEP = REF_OWN_LINE ? '\n' : ' ';
 
@@ -71,6 +79,6 @@ const trailer = (refer, key) => SEP + wrap(refer, key);
 const attach = (explanation, refer, key) => explanation + trailer(refer, key);
 
 module.exports = {
-  PLAIN_BY_DEFAULT, PLAIN_EXCEPTIONS, REF_OWN_LINE, SEP,
+  PLAIN_BY_DEFAULT, PLAIN_EXCEPTIONS, REF_OWN_LINE, SEP, DIAGNOSTIC_REFERENCE,
   isPlain, spellOut, wrap, trailer, attach,
 };

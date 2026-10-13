@@ -1,0 +1,382 @@
+// Parser for the Instructional Design Foundations Certification graded assessments (one file per module).
+//
+// Four source documents, m1..m4, in the one-file-per-module arrangement cstp-course-1 uses.
+// Within a file the grammar is ai-products' family, and it is the same in all four:
+//
+//   Q1. What is the correct order of operations for connecting with another person?
+//   A. Communicate first, then connect once agreement is reached
+//   B. Connection and communication happen simultaneously and cannot be separated   <- C, D likewise
+//   ✅ Correct Answer: C
+//   Mapped to: M2L1V1
+//   Explanation for Option C (Correct):
+//   Connect first and communicate second. Connecting means you have to listen, …
+//   Explanation for Other Options:
+//   A: Most people have the order backward, which is what causes the failure.       <- B, D likewise
+//
+// A scenario question writes the label on the HEADER line and the scenario in the paragraph
+// below it:
+//
+//   Q1. Scenario:
+//   Two candidates apply for the same role with identical qualifications … Which principle
+//   best explains that decision?
+//
+// The scenario paragraph already ends in the question, so the prompt is that ONE line and the
+// "Scenario:" label never reaches it — it is part of the header, which is structure. Every
+// prompt this parser emits is therefore a single line, the form the importer is happiest with.
+// `hasScenario` records which questions were written that way.
+//
+// The one thing worth knowing about the source: module 1 is formatted differently from modules
+// 2 to 4. It uses Heading4 paragraphs for its question headers and packs "Correct Answer" with
+// "Mapped to", and each explanation label with its text, into single paragraphs split by
+// <w:br/>. Modules 2 to 4 use plain paragraphs throughout and write those as separate ones.
+// lib-lines splits on <w:br/>, so both arrive here as the identical line grammar above and no
+// per-module special case is needed. lib-lines rather than lib-lines-strikeaware: there is no
+// struck text in any of the four documents.
+//
+// The answer key is stated twice — once as "Correct Answer: C" and again by which option the
+// "(Correct)" explanation label names. Neither is derived from the other, so the two are
+// checked against each other; that is the only independent witness available, as in
+// ai-products. A disagreement is fatal rather than a warning, because either reading would
+// produce a plausible-looking document with the wrong option starred.
+const fs = require('fs');
+const path = require('path');
+const { lines } = require('./lib-lines');
+const { punctuate } = require('./lib-punctuation');
+
+const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
+const SLUG = 'instructional-design';
+// TWO source documents hold FIVE modules. The first carries Modules 1-4, each introduced by
+// its own "Module N: <title>" heading; the second is the Module 5 career quiz on its own. So a
+// unit boundary here is a heading INSIDE a document, not the document itself, which is why this
+// parser splits on headings rather than reading one file per module like its siblings do.
+const DOCS = [
+  { dir: 'q1', file: 'Graded_Assessment_Instructional_Design_Foundations_Certification.docx' },
+  { dir: 'q2', file: 'Graded_Quiz_2_Career_Launch_Strategy_Assessment.docx' },
+];
+const MODULE_HEAD = /^Module\s+(\d+)\s*[:\u2013\u2014-]\s*(.+)$/i;
+const LET = ['A', 'B', 'C', 'D'];
+
+const outlinePath = path.join(SP, SLUG, 'outline.json');
+if (!fs.existsSync(outlinePath)) {
+  console.error(`ENOENT ${outlinePath}\n`
+    + 'The module titles and the mapping cross-check both come from the outline:\n'
+    + `  node src/instructional-design-parse-outline.js > ${outlinePath}`);
+  process.exit(1);
+}
+const { map: VIDEOS, meta: MMETA, cumulativeAlias: ALIAS = {} } =
+  JSON.parse(fs.readFileSync(outlinePath, 'utf8'));
+
+// THE QUIZZES AND THE OUTLINE NUMBER VIDEOS DIFFERENTLY. Every quiz document counts V across the
+// MODULE (M1L2V3); the outline restarts it in each lesson (M1L2V1). Lesson 1 agrees, so the
+// disagreement only shows from lesson 2 on, where a cited code looks valid and resolves to
+// nothing. outline.json derives the translation once as `cumulativeAlias`, so this parser and
+// the practice one cannot drift apart.
+//
+// Applied ONLY when the cited code resolves to nothing, and reported every time. A code the
+// outline does know is never second-guessed — that is what stops this quietly "repairing" a
+// mapping that is merely wrong, which is the failure paid-ads-11 documents.
+function resolveMapped(code, where) {
+  if (!code || VIDEOS[code]) return code;
+  const alias = ALIAS[code];
+  if (!alias) return code;
+  warn.push(`${where}: cites ${code}, which the outline has no video for. The quiz counts V across `
+    + `the module and the outline restarts it each lesson, so this resolves to ${alias} — `
+    + `"${VIDEOS[alias].video}"`);
+  return alias;
+}
+
+// Content — prompts, options, explanations — reaches the import verbatim. Only the ends are
+// trimmed and a non-breaking space folded, so a run of spaces inside a line stays the author's.
+const text = s => String(s).replace(/ /g, ' ').replace(/^[ \t]+|[ \t]+$/g, '');
+
+const Q_HEAD  = /^Q(\d+)\.\s*(.*)$/;
+const SCENARIO = /^Scenario\s*:\s*$/i;
+const OPTION  = /^([A-D])\.\s+(.+)$/;
+const KEY     = /^\s*(?:✅\s*)?Correct Answer\s*:\s*([A-D])\b/i;
+const MAPPED  = /^Mapped to\s*:\s*(M\d+L\d+V\d+)\b/i;
+// TWO explanation layouts exist across these courses, and this course's GRADED quizzes use the
+// one the other courses reserve for their practice quizzes:
+//
+//   full label     Explanation for Option B (Correct):    <- this course, every option labelled
+//                  Explanation for Option A:                 in full, "(Correct)" optional
+//
+//   shared header  Explanation for Option B (Correct):    <- soft-skills, instructional-design
+//                  Explanation for Other Options:            and the rest of the graded family
+//                  A: …
+//
+// EXPL_ANY covers the full-label form for every letter; EXPL_C is the subset of it that carries
+// the "(Correct)" marker. Both are kept because a later revision of this source is free to
+// switch, and because the two forms can legitimately appear in one document — the correct
+// option's label is identical in each.
+const EXPL_ANY = /^Explanation for Option\s+([A-D])\s*(?:\((Correct|Incorrect)\))?\s*:\s*(.*)$/i;
+const EXPL_C  = /^Explanation for Option\s+([A-D])\s*\(Correct\)\s*:\s*(.*)$/i;
+const EXPL_O  = /^Explanation for Other Options\s*:\s*$/i;
+const EXPL_I  = /^([A-D])\s*:\s+(.+)$/;
+
+const warn = [];
+const modules = [];
+let renumbered = 0;
+
+// Split both documents into one section per module heading, then treat each section exactly
+// as a single-module file would be treated.
+const sections = [];
+for (const d of DOCS) {
+  const src = path.join(SP, SLUG, d.dir, 'word', 'document.xml');
+  if (!fs.existsSync(src)) {
+    console.error(`ENOENT ${src}\nUnzip the graded quiz first:\n`
+      + `  unzip -q "${d.file}" -d work/${SLUG}/${d.dir}`);
+    process.exit(1);
+  }
+  const L = lines(src).map(text).filter(s => s.trim());
+  const heads = [];
+  L.forEach((l, i) => {
+    const m = MODULE_HEAD.exec(l);
+    if (m) heads.push({ at: i, num: +m[1], title: m[2].trim() });
+  });
+  if (!heads.length) { warn.push(`${d.file}: no "Module <n>: <title>" heading found`); continue; }
+  heads.forEach((h, k) => {
+    const end = k + 1 < heads.length ? heads[k + 1].at : L.length;
+    sections.push({ num: h.num, sourceTitle: h.title, file: d.file, L: L.slice(h.at, end) });
+  });
+}
+sections.sort((a, b) => a.num - b.num);
+
+const dupes = sections.map(x => x.num).filter((x, i, a) => a.indexOf(x) !== i);
+if (dupes.length) warn.push(`module ${[...new Set(dupes)].join(', ')} appears in more than one document`);
+
+for (const sec of sections) {
+  const n = sec.num;
+  const L = sec.L;
+
+  const mmeta = MMETA['M' + n] || { title: '' };
+  // The outline title is canonical; a quiz heading that disagrees is reported, not used.
+  if (mmeta.title && text(sec.sourceTitle).toLowerCase() !== text(mmeta.title).toLowerCase())
+    warn.push(`M${n}: quiz heading says "${sec.sourceTitle}" but the outline says `
+      + `"${mmeta.title}" — the outline title is used`);
+  const mo = { num: n, title: mmeta.title || sec.sourceTitle, questions: [] };
+  modules.push(mo);
+
+  const starts = [];
+  L.forEach((l, i) => { if (Q_HEAD.test(l)) starts.push(i); });
+  if (!starts.length) { warn.push(`M${n}: no "Q<n>." headers found`); continue; }
+
+  starts.forEach((start, k) => {
+    const end = k + 1 < starts.length ? starts[k + 1] : L.length;
+    const blk = L.slice(start, end);
+    const head = blk[0].match(Q_HEAD);
+    const sourceNum = +head[1];
+    const where = `M${n} Q${sourceNum}`;
+
+    const q = {
+      num: k + 1, sourceNum,
+      prompt: [], options: [], correct: null, correctExplFor: null,
+      feedback: {}, mapped: '', hasScenario: false,
+    };
+
+    // ---- prompt ------------------------------------------------------------------------
+    // Either the question is on the header line, or the header says "Scenario:" and the
+    // paragraph below carries the whole thing.
+    let i = 1;
+    if (!head[2]) {
+      // BARE "Q7." HEADER. This source mixes two layouts inside one document: some questions
+      // put the text beside the number, others put the number alone and the question in the
+      // paragraph below it. The bare form is not a scenario and not a defect, so it is simply
+      // gathered from the lines that follow. Only an EMPTY gather is worth reporting.
+      while (i < blk.length && !OPTION.test(blk[i])) { q.prompt.push(blk[i]); i++; }
+      if (!q.prompt.length) warn.push(`${where}: nothing follows the bare "Q${q.sourceNum}." header`);
+    } else if (SCENARIO.test(head[2])) {
+      q.hasScenario = true;
+      // The "Scenario:" label is part of what the author wrote, so quiz.json records it. The
+      // builder decides what reaches the import section — see instructional-design-build.js,
+      // which folds the bare label into the paragraph it introduces so the importer cannot read
+      // it as an answer option.
+      q.prompt.push(head[2]);
+      while (i < blk.length && !OPTION.test(blk[i])) { q.prompt.push(blk[i]); i++; }
+    } else {
+      q.prompt.push(head[2]);
+      // Anything before the first option belongs to the prompt — a second paragraph would be
+      // unusual here, but dropping it silently would lose source text.
+      while (i < blk.length && !OPTION.test(blk[i])) { q.prompt.push(blk[i]); i++; }
+    }
+    if (!q.prompt.length) { warn.push(`${where}: no prompt — question skipped`); return; }
+
+    // ---- options, key, mapping, explanations --------------------------------------------
+    let mode = null, pendingLetter = null, lastExplLetter = null;
+    for (; i < blk.length; i++) {
+      const l = blk[i];
+      let m;
+
+      if ((m = l.match(OPTION)) && !q.correct && LET.includes(m[1])) {
+        q.options.push({ letter: m[1], text: m[2] });
+        continue;
+      }
+      if ((m = l.match(KEY)))    { q.correct = m[1].toUpperCase(); mode = null; continue; }
+      if ((m = l.match(MAPPED))) { q.mapped = m[1].toUpperCase();  mode = null; continue; }
+      // One labelled block per option, correct or not. The label may carry its text on the same
+      // line or leave it to the next, so the letter is held in pendingLetter either way.
+      if ((m = l.match(EXPL_ANY))) {
+        const L = m[1].toUpperCase();
+        if (m[2] && /^correct$/i.test(m[2])) q.correctExplFor = q.correctExplFor || L;
+        pendingLetter = L;
+        if (m[3] && m[3].trim()) { q.feedback[L] = m[3].trim(); pendingLetter = null; }
+        mode = 'expl';
+        lastExplLetter = L;
+        continue;
+      }
+      if (EXPL_O.test(l)) { mode = 'other'; pendingLetter = null; continue; }
+      if (mode === 'other' && (m = l.match(EXPL_I))) {
+        q.feedback[m[1].toUpperCase()] = m[2];
+        lastExplLetter = m[1].toUpperCase();
+        continue;
+      }
+      if (pendingLetter) { q.feedback[pendingLetter] = l; pendingLetter = null; continue; }
+      // A continuation line of whichever explanation is open. With one labelled block per
+      // option that is simply the last letter seen, so it no longer has to be inferred from
+      // which keys exist — an inference that broke as soon as every option carried its own label.
+      if (mode && lastExplLetter && q.feedback[lastExplLetter]) {
+        q.feedback[lastExplLetter] += '\n' + l;
+        continue;
+      }
+      warn.push(`${where}: unmatched line "${l.slice(0, 60)}"`);
+    }
+
+    // ---- checks --------------------------------------------------------------------------
+    const letters = q.options.map(o => o.letter).join('');
+    if (letters !== 'ABCD') { warn.push(`${where}: options are "${letters}", expected ABCD — skipped`); return; }
+    // TWO OPTIONS WITH THE SAME TEXT. Coursera rejects the question outright — "Duplicate
+    // answers are not allowed" — and every other check here passes: four options, one key,
+    // four feedback blocks, a resolving reference. It cannot be repaired at this end, since
+    // distinct feedback under identical options means the distractors were never written and
+    // inventing them is authoring assessment content. The verifier checks the built document
+    // again, so a duplicate cannot reach an upload either way.
+    {
+      const seenOpt = new Map();
+      for (const o of q.options) {
+        const k = String(o.text).replace(/\s+/g, ' ').trim().toLowerCase();
+        if (!k) continue;
+        if (seenOpt.has(k)) {
+          warn.push(`${where}: options ${seenOpt.get(k)} and ${o.letter} have identical text — `
+            + 'Coursera rejects the question ("Duplicate answers are not allowed"); the source '
+            + 'needs distinct distractors before this can be built.');
+        } else seenOpt.set(k, o.letter);
+      }
+    }
+    if (!q.correct) { warn.push(`${where}: no "Correct Answer:" line — skipped`); return; }
+    if (!q.correctExplFor) { warn.push(`${where}: no "(Correct)" explanation label — skipped`); return; }
+    // The two independent statements of the key. See the header comment.
+    if (q.correct !== q.correctExplFor) {
+      throw new Error(`${where}: the answer key disagrees with itself — "Correct Answer: ${q.correct}" `
+        + `but the explanation labelled (Correct) is for ${q.correctExplFor}. `
+        + 'Resolve it in the source; either reading would star a different option.');
+    }
+    const missing = LET.filter(x => !q.feedback[x]);
+    if (missing.length) { warn.push(`${where}: no explanation for ${missing.join(', ')} — skipped`); return; }
+    if (!q.mapped) { warn.push(`${where}: no "Mapped to:" line — skipped`); return; }
+    q.mapped = resolveMapped(q.mapped, where);
+    if (!VIDEOS[q.mapped]) { warn.push(`${where}: mapping ${q.mapped} is not in the outline — skipped`); return; }
+    if (VIDEOS[q.mapped].module !== n) {
+      warn.push(`${where}: mapping ${q.mapped} points outside module ${n} — a question with no video `
+        + 'in its own module is a content gap, not a mapping to repair');
+    }
+    // The source numbers its questions 1-N across the WHOLE document rather than restarting in
+    // each module, so after module 1 every number differs from its position. That is a counting
+    // convention, not a mis-ordering: it is noted once below instead of on every question.
+    if (q.sourceNum !== q.num) renumbered++;
+
+    mo.questions.push(q);
+  });
+}
+
+// --- is this file even the module's assessment? -----------------------------------------
+// A per-module file whose questions MOSTLY map outside that module is not module N's quiz with a
+// few stray references; it is the wrong document. That is not a mapping to repair and it must not
+// be built — a graded quiz shipped with another module's questions is worse than a missing one.
+//
+// This has already fired once, on ANOTHER course built to this same template:
+// communication-skills was supplied a GradedAssessment_M1.docx that was a near-copy of its own
+// practice quiz — 16 questions rather than 10, carrying the practice document's
+// "Module N, Lesson N:" headings, one question per video across all four modules, and 148 of its
+// 218 lines identical to CommunicationSkills_PracticeQuiz.docx. Only 4 of its 16 questions
+// belonged to module 1. The check is kept in every course built from that family because the
+// mistake is one a person makes while assembling the sources, not one a parser can foresee.
+// Negotiating's four files are clean: 10 questions each, each mapping inside its own module.
+const dropped = [];
+for (let i = modules.length - 1; i >= 0; i--) {
+  const mo = modules[i];
+  if (!mo.questions.length) continue;
+  const outside = mo.questions.filter(q => VIDEOS[q.mapped] && VIDEOS[q.mapped].module !== mo.num);
+  if (outside.length * 2 <= mo.questions.length) continue;
+  const elsewhere = [...new Set(outside.map(q => 'M' + VIDEOS[q.mapped].module))].sort();
+  warn.push(`M${mo.num}: DROPPED — ${outside.length} of its ${mo.questions.length} questions map to `
+    + `${elsewhere.join(', ')} rather than module ${mo.num}. A file whose questions mostly belong to `
+    + 'other modules is the wrong document, not a mapping to repair, so no quiz is built for this '
+    + 'module. Supply the correct source and re-run.');
+  dropped.push(mo.num);
+  modules.splice(i, 1);
+}
+
+// --- video coverage, against the outline's own claim ------------------------------------
+// Every module's Graded Assessment row describes "a ten-question graded quiz drawing on every
+// video in the module". Where that is not true the gap is named, because it is an editorial
+// decision about the assessment rather than a parsing failure.
+if (renumbered)
+  warn.push(`${renumbered} question(s) carry a source number that differs from their position in `
+    + 'the module. The source numbers 1-N across the whole document rather than restarting at '
+    + 'each module heading, so this is its counting convention and not a re-ordering. Noted once '
+    + 'here so the per-question check does not report most of the paper.');
+
+const coverage = [];
+for (const mo of modules) {
+  const used = new Set(mo.questions.map(q => q.mapped));
+  const all = Object.keys(VIDEOS).filter(k => VIDEOS[k].module === mo.num);
+  const unused = all.filter(k => !used.has(k));
+  coverage.push({ num: mo.num, used: used.size, total: all.length, unused });
+  // NO full-coverage expectation on this course. A Dummies module holds four videos and its
+  // quiz asks ten questions, so every video is necessarily cited and a gap means a defect. Here
+  // the modules hold 13 to 19 videos against ten questions, so partial coverage is arithmetic
+  // rather than a fault. The per-module counts are reported above; what still matters is a
+  // citation pointing at a video the outline does not have, which is checked where it is read.
+}
+
+// PUNCTUATION. Missing end marks and broken quote pairs are repaired before anything is built
+// — see lib-punctuation.js for the rules, including why an option set written WITHOUT end marks
+// throughout is left alone rather than "fixed" into the author's own style. Every change is
+// recorded on the question as q.punct, with the source wording kept in q.original, so a
+// punctuation fix can never quietly stand in for a real mismatch.
+//
+// The log labels each change by document, so each unit carries a `file` for the call only.
+modules.forEach(u => { u.file = `Graded M${u.num}`; });
+const punctLog = punctuate(modules, { allOptions: true });
+modules.forEach(u => { delete u.file; });
+
+if (process.argv.includes('--report')) {
+  let total = 0, scen = 0;
+  const key = {};
+  for (const mo of modules) {
+    const cov = coverage.find(c => c.num === mo.num);
+    const ls = new Set(mo.questions.map(q => VIDEOS[q.mapped] && VIDEOS[q.mapped].lesson));
+    console.log(`Module ${mo.num} — ${mo.title}: ${mo.questions.length} questions, `
+      + `${ls.size} lessons covered, ${cov.used} of ${cov.total} videos referenced`);
+    total += mo.questions.length;
+    for (const q of mo.questions) { key[q.correct] = (key[q.correct] || 0) + 1; if (q.hasScenario) scen++; }
+  }
+  const all = modules.flatMap(m => m.questions);
+  const longest = all.flatMap(q => [...q.prompt, ...Object.values(q.feedback)])
+    .reduce((a, s) => Math.max(a, s.length), 0);
+  console.log(`\n${modules.length} modules · ${total} questions · ${all.filter(q => q.mapped).length} mapped · `
+    + `${all.reduce((a, q) => a + Object.keys(q.feedback).length, 0)} explanations · ${scen} scenarios`);
+  console.log(`answer key spread: ${LET.map(l => `${l}:${key[l] || 0}`).join(' ')}`);
+  console.log(`video coverage:    ${coverage.reduce((a, c) => a + c.used, 0)} of `
+    + `${coverage.reduce((a, c) => a + c.total, 0)} videos referenced`);
+  console.log(`prompt lines:      ${all.filter(q => q.prompt.length > 1).length} questions use more than `
+    + `one line, ${all.filter(q => q.prompt.length === 1).length} are one line`);
+  console.log(`longest line:      ${longest} characters`);
+  console.log(`\npunctuation added or corrected: ${punctLog.length}`);
+  punctLog.forEach(r => console.log('  ' + r));
+  console.log(`\nwarnings: ${warn.length}`);
+  warn.forEach(w => console.log('  ' + w));
+} else {
+  warn.forEach(w => console.error('WARN ' + w));
+  punctLog.forEach(r => console.error('PUNC ' + r));
+  console.log(JSON.stringify(modules, null, 2));
+}

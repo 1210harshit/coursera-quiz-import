@@ -287,7 +287,19 @@ for (const mo of mods) {
     // The source's paragraphs are kept; --join-prompt collapses them on both sides at once.
     const srcParas = (Array.isArray(src.prompt) ? src.prompt : [src.prompt])
       .map(l => String(l).replace(/\s+/g, ' ').trim()).filter(Boolean);
-    const wantParas = (JOIN_PROMPT ? [srcParas.join(' ')] : srcParas)
+    // A bare "Scenario:" is a LABEL for the paragraph it introduces, not a paragraph of its own
+    // — this source puts it on the question's header line, so the parse yields
+    // ["Scenario:", "<the scenario>"]. Fold it back in, so the prompt reads
+    // "Scenario — <text>" as one paragraph: that is the form five uploads settled, and the word
+    // is kept while its colon is not. A prompt whose paragraphs are genuinely separate still
+    // keeps its split, which is what convention 3 is about.
+    const labelled = [];
+    for (const t of srcParas) {
+      const i = labelled.length - 1;
+      if (i >= 0 && /^Scenario\s*:\s*$/i.test(labelled[i])) labelled[i] += ' ' + t;
+      else labelled.push(t);
+    }
+    const wantParas = (JOIN_PROMPT ? [labelled.join(' ')] : labelled)
       .map(t => t.replace(/^Scenario\s*:\s*/i, 'Scenario — '))
       .filter(Boolean);
     if (gotPrompt.length !== wantParas.length)

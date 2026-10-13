@@ -33,6 +33,7 @@
 const fs = require('fs');
 const path = require('path');
 const { lines } = require('./lib-lines');
+const { punctuate } = require('./lib-punctuation');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const SLUG = 'coaching-mentoring';
@@ -141,6 +142,24 @@ starts.forEach((start, k) => {
   // ---- checks --------------------------------------------------------------------------------
   const letters = q.options.map(o => o.letter).join('');
   if (letters !== 'ABCD') { warn.push(`${where}: options are "${letters}", expected ABCD — skipped`); return; }
+  // TWO OPTIONS WITH THE SAME TEXT. Coursera rejects the question outright — "Duplicate
+  // answers are not allowed" — and every other check here passes: four options, one key,
+  // four feedback blocks, a resolving reference. It cannot be repaired at this end, since
+  // distinct feedback under identical options means the distractors were never written and
+  // inventing them is authoring assessment content. The verifier checks the built document
+  // again, so a duplicate cannot reach an upload either way.
+  {
+    const seenOpt = new Map();
+    for (const o of q.options) {
+      const k = String(o.text).replace(/\s+/g, ' ').trim().toLowerCase();
+      if (!k) continue;
+      if (seenOpt.has(k)) {
+        warn.push(`${where}: options ${seenOpt.get(k)} and ${o.letter} have identical text — `
+          + 'Coursera rejects the question ("Duplicate answers are not allowed"); the source '
+          + 'needs distinct distractors before this can be built.');
+      } else seenOpt.set(k, o.letter);
+    }
+  }
   if (!q.correct) { warn.push(`${where}: no "Correct answer:" line — skipped`); return; }
   if (!q.correctExplFor) { warn.push(`${where}: no explanation labelled "Correct." — skipped`); return; }
   // The key is stated twice and neither statement derives from the other, so they are checked
@@ -162,8 +181,8 @@ starts.forEach((start, k) => {
 
 // --- coverage, against the diagnostic's own stated design ----------------------------------
 // The planned spread is READ FROM THE DOCUMENT, not hardcoded. Every course built to this
-// template states it in the Question Bank line, and the courses disagree: emotional-intelligence
-// and negotiating plan 2/2/3/3, this one plans 3/3/2/2. A constant copied from a sibling course
+// template states it in the Question Bank line, and the courses disagree: coaching-mentoring
+// and coaching-mentoring plan 2/2/3/3, this one plans 3/3/2/2. A constant copied from a sibling course
 // reports four false warnings on the next one, which is exactly what it did here before this
 // was read properly.
 //
@@ -204,6 +223,17 @@ if (unit.questions.length !== 10) {
   warn.push(`${unit.questions.length} questions parsed, but the design note plans ten`);
 }
 
+// PUNCTUATION. Missing end marks and broken quote pairs are repaired before anything is built
+// — see lib-punctuation.js for the rules, including why an option set written WITHOUT end marks
+// throughout is left alone rather than "fixed" into the author's own style. Every change is
+// recorded on the question as q.punct, with the source wording kept in q.original, so a
+// punctuation fix can never quietly stand in for a real mismatch.
+//
+// The log labels each change by document, so each unit carries a `file` for the call only.
+unit.file = 'Diagnostic';
+const punctLog = punctuate([unit], { allOptions: true });
+delete unit.file;
+
 if (process.argv.includes('--report')) {
   const key = {};
   console.log(`${COURSE.title}`);
@@ -222,9 +252,12 @@ if (process.argv.includes('--report')) {
   console.log(`module spread:     ${Object.keys(PLANNED).map(m => `M${m}:${byModule[m] || 0}`).join(' ')}`);
   console.log(`answer key spread: ${LET.map(l => `${l}:${key[l] || 0}`).join(' ')}`);
   console.log(`longest line:      ${longest} characters`);
+  console.log(`\npunctuation added or corrected: ${punctLog.length}`);
+  punctLog.forEach(r => console.log('  ' + r));
   console.log(`\nwarnings: ${warn.length}`);
   warn.forEach(w => console.log('  ' + w));
 } else {
   warn.forEach(w => console.error('WARN ' + w));
+  punctLog.forEach(r => console.error('PUNC ' + r));
   console.log(JSON.stringify([unit], null, 2));
 }

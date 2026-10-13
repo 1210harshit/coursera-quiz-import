@@ -18,6 +18,7 @@ const path = require('path');
 const { zipDir } = require('./lib-zipwriter');
 const { spellOut, attach, trailer, isPlain, wrap, REF_OWN_LINE, SEP }
   = require('./coaching-mentoring-lib-refer.js');
+const JOIN_PROMPT = process.argv.includes('--join-prompt');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const TMPL = path.join(SP, 'tmpl');
@@ -52,7 +53,7 @@ function stripVerdict(fb) {
   return out;
 }
 
-// "M1L1V2" -> "Refer to Module 1 Lesson 1 Video: Finding the Time to Stay Connected"
+// "M1L1V2" -> "Refer to Module 1 Lesson 1 Video: Benefits for Body, Mind, Emotions, and Spirit"
 //
 // Module and lesson spell out in full words and the asset kind carries NO number. The title is
 // what identifies the item for the learner, so the ordinal is internal bookkeeping and never
@@ -220,9 +221,11 @@ function buildBody(mo) {
     // kept, since those are layout rather than text styling.
     // This quiz stores the prompt as one string; the OSHA one stores an array of
     // paragraphs. Accept either so the same builder works for both courses.
-    const promptParas = (Array.isArray(q.prompt) ? q.prompt : [q.prompt])
-      .map((line, i) => (i === 0 ? line.replace(/^\s*Scenario\s*:\s*/i, '') : line))
-      .filter(t => t.trim());
+    // The source's paragraph structure reaches the learner — see coaching-mentoring-build.js for
+    // why, and --join-prompt to restore the single-line form on builder and verifier together.
+    const rawParas = (Array.isArray(q.prompt) ? q.prompt : [q.prompt])
+      .map((line, i) => (i === 0 ? line.replace(/^\s*Scenario\s*:\s*/i, '') : line));
+    const promptParas = (JOIN_PROMPT ? [rawParas.join(' ')] : rawParas).filter(t => t.trim());
 
     // A prompt line beginning "Word:" is read by the importer as an answer option — the
     // failure that rejected every scenario question on osha. The documented failure is a

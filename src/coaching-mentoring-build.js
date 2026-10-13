@@ -18,6 +18,7 @@ const path = require('path');
 const { zipDir } = require('./lib-zipwriter');
 const { spellOut, attach, trailer, isPlain, wrap, REF_OWN_LINE, SEP }
   = require('./coaching-mentoring-lib-refer.js');
+const JOIN_PROMPT = process.argv.includes('--join-prompt');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const TMPL = path.join(SP, 'tmpl');
@@ -55,7 +56,7 @@ function stripVerdict(fb) {
   return out;
 }
 
-// "M1L1V2" -> "Refer to Module 1 Lesson 1 Video: Finding the Time to Stay Connected"
+// "M1L1V2" -> "Refer to Module 1 Lesson 1 Video: Benefits for Body, Mind, Emotions, and Spirit"
 //
 // Module and lesson spell out in full words and the asset kind carries NO number. The title is
 // what identifies the item for the learner, so the ordinal is internal bookkeeping and never
@@ -237,8 +238,33 @@ function buildBody(mo) {
     // kept, since those are layout rather than text styling.
     // This quiz stores the prompt as one string; the OSHA one stores an array of
     // paragraphs. Accept either so the same builder works for both courses.
-    const promptParas = [(Array.isArray(q.prompt) ? q.prompt : [q.prompt])
-      .map(line => String(line).trim()).filter(Boolean).join(' ')]
+    // The source's paragraph structure reaches the learner: a scenario written as several
+    // paragraphs with a closing question arrives that way, not as one block of text. The gap
+    // between them is paragraph SPACING (gapAfter below), never an empty paragraph — a blank
+    // line there would end the prompt as far as the importer is concerned.
+    //
+    // This overturns the repo's oldest rule, that a second prompt paragraph is an unmatched
+    // line which can fail the WHOLE document. That rule rested on a single failed upload that
+    // was never isolated, and its close cousin ("a free-standing Refer to paragraph rejects
+    // the question") was disproved outright by managing-break-probe.js.
+    //
+    // --join-prompt restores the single-line form, and is the first thing to try if an import
+    // ever fails on a document built from here on. The verifier takes the same flag.
+    const rawParas = (Array.isArray(q.prompt) ? q.prompt : [q.prompt])
+      .map(line => String(line).trim()).filter(Boolean);
+    // A bare "Scenario:" is a LABEL for the paragraph it introduces, not a paragraph of its own
+    // — this source puts it on the question's header line, so the parse yields
+    // ["Scenario:", "<the scenario>"]. Fold it back in, so the prompt reads
+    // "Scenario — <text>" as one paragraph: that is the form five uploads settled, and the word
+    // is kept while its colon is not. A prompt whose paragraphs are genuinely separate still
+    // keeps its split, which is what convention 3 is about.
+    const labelled = [];
+    for (const t of rawParas) {
+      const i = labelled.length - 1;
+      if (i >= 0 && /^Scenario\s*:\s*$/i.test(labelled[i])) labelled[i] += ' ' + t;
+      else labelled.push(t);
+    }
+    const promptParas = (JOIN_PROMPT ? [labelled.join(' ')] : labelled)
       .map(t => t.replace(/^Scenario\s*:\s*/i, 'Scenario — '))
       .filter(t => t.trim());
 
@@ -251,12 +277,6 @@ function buildBody(mo) {
     // colon in the first 25 characters as a label would block a legitimate question.
     // Multi-word openings warn instead of throwing, and the warning names the question so it
     // can be import-tested first.
-    if (promptParas.length > 1) {
-      atRisk.push(`M${mo.num} Q${q.num}: ${promptParas.length} prompt paragraphs`);
-      console.error(`WARN Module ${mo.num} Q${q.num}: prompt is ${promptParas.length} paragraphs. A `
-        + 'second prompt paragraph is an unmatched line and can break the parse for the WHOLE '
-        + 'document, not just this question.');
-    }
     promptParas.forEach((text, i) => {
       const bare = /^([A-Za-z][A-Za-z ]{0,24}):\s*$/.exec(text);
       const label = /^([A-Za-z][A-Za-z ]{0,24}):\s/.exec(text);

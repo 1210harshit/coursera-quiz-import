@@ -29,7 +29,7 @@
 //     names an instructor, so a placeholder is emitted and warned about rather than left blank —
 //     "[Lead Instructor Name]" reads as the TODO it is, where blank reads as an omission.
 //   * "Aligned Learning Objective:" states the objective in FULL, module-specific wording rather
-//     than naming an id ("LO2"). The builder wants the id. emotional-intelligence resolved it by
+//     than naming an id ("LO2"). The builder wants the id. dei resolved it by
 //     the opening verb; that fails on all four modules here, so a reported positional fallback
 //     does the work instead — see the resolution block for why, and what to check.
 const path = require('path');
@@ -96,8 +96,15 @@ for (const b of blocks) {
       continue;
     }
     // Part 1 states each objective in full: "LO1: Explain how cognitive, social, and…".
-    if (!inPart2 && (m = t.match(/^(LO\d+)\s*(?:\([^)]*\))?\s*[:\-–]\s*(.+)$/i))) {
-      course.los[m[1].toUpperCase()] = m[2].trim();
+    //
+    // The space in "LO 1:" is tolerated and the id normalised to "LO1". The emotional-intelligence
+    // outline labels its first objective "LO 1:" and the rest "LO2:"…"LO6:", and the stricter
+    // form of this regex silently dropped the first one: that course then read as five
+    // objectives, the text-match for its last module failed, and the positional fallback aligned
+    // it to an LO a previous module already held. A label this close to the convention is a
+    // typo, not a different kind of line, so it is read rather than skipped.
+    if (!inPart2 && (m = t.match(/^LO\s*(\d+)\s*(?:\([^)]*\))?\s*[:\-–]\s*(.+)$/i))) {
+      course.los['LO' + m[1]] = m[2].trim();
       continue;
     }
 
@@ -192,7 +199,32 @@ for (const [k, m] of Object.entries(meta)) {
     m.alignedLOs = [hits[0]];
     continue;
   }
-  // VERB MATCHING DOES NOT WORK ON THIS COURSE, and unlike emotional-intelligence that is not a
+  // AMBIGUOUS VERB — two objectives opening the same word. Resolve on the whole sentence
+  // before any positional guess, which is what the fallback below would otherwise do. This
+  // course states six objectives against four modules, so "module N takes LO N" is wrong by
+  // construction: it gave M4 the objective M3 already held, and that id reaches the built
+  // document's Guide Section rather than staying in the report.
+  if (hits.length > 1) {
+    const target = norm(m.alignedText);
+    const shared = lo => {
+      const a = norm(course.los[lo]);
+      let i = 0;
+      while (i < a.length && i < target.length && a[i] === target[i]) i++;
+      return i;
+    };
+    const exact = hits.filter(lo => norm(course.los[lo]) === target);
+    let pick = exact;
+    if (pick.length !== 1) {
+      const best = Math.max(...hits.map(shared));
+      pick = best > 0 ? hits.filter(lo => shared(lo) === best) : [];
+    }
+    if (pick.length === 1) {
+      m.alignedLO = pick[0];
+      m.alignedLOs = [pick[0]];
+      continue;
+    }
+  }
+  // VERB MATCHING DOES NOT WORK ON THIS COURSE, and unlike dei that is not a
   // defect in one module — it fails on all four. Part 1 opens its objectives Explain / Use /
   // Evaluate / Analyze, while the module lines open Identify / Apply / Construct / Recognize.
   // The two sets are disjoint, so there is nothing to match on.
@@ -216,6 +248,20 @@ for (const [k, m] of Object.entries(meta)) {
     warn.push(`${k}: aligned objective "${m.alignedText.slice(0, 48)}…" opens "${verb}", which matches `
       + `${hits.length} Part 1 objectives (${hits.join(', ') || 'none'}), and there is no ${positional} `
       + 'to fall back to — not resolved to an LO id');
+  }
+}
+
+// Two modules resolving to the SAME objective means one of them is wrong, and the id is printed
+// in each built document's Guide Section. Positional inference is how this happens when the
+// course states more objectives than it has modules.
+{
+  const claimed = new Map();
+  for (const [k, m] of Object.entries(meta)) {
+    if (!m.alignedLO) continue;
+    if (claimed.has(m.alignedLO)) {
+      warn.push(`${claimed.get(m.alignedLO)} and ${k} are both aligned to ${m.alignedLO} — one is `
+        + 'wrong, and the id reaches the Guide Section of every document built for that module');
+    } else claimed.set(m.alignedLO, k);
   }
 }
 

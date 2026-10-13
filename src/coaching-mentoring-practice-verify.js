@@ -3,6 +3,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { spellOut, attach, trailer, isPlain, wrap, REF_OWN_LINE, SEP }
   = require('./coaching-mentoring-lib-refer.js');
+const JOIN_PROMPT = process.argv.includes('--join-prompt');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const OUT = process.argv[2];
@@ -193,6 +194,23 @@ for (const mo of mods) {
     const fbs = blk.filter(l => /^Feedback:\s/.test(l));
     if (opts.length !== 4) bad(`${tag} has ${opts.length} options`);
     if (fbs.length !== 4) bad(`${tag} has ${fbs.length} feedback blocks`);
+
+    // Two options with the SAME text. Coursera refuses the question outright with
+    // "Duplicate answers are not allowed", and nothing else here would catch it: the counts,
+    // the key, the feedback blocks and the reference are all correct. Checked on the BUILT
+    // document, not only at parse time, so it cannot reach an upload.
+    {
+      const seenOpt = new Map();
+      opts.forEach(l => {
+      const t = l.replace(/^\*?[A-F]:\s*/, '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const letter = (/^\*?([A-F]):/.exec(l) || [, '?'])[1];
+      if (!t) return;
+      if (seenOpt.has(t)) {
+        bad(`${tag} options ${seenOpt.get(t)} and ${letter} have identical text — Coursera `
+        + 'rejects the question ("Duplicate answers are not allowed")');
+      } else seenOpt.set(t, letter);
+      });
+    }
 
     const starred = opts.filter(l => l.startsWith('*'));
     if (starred.length !== 1) bad(`${tag} has ${starred.length} starred answers`);

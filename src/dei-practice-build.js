@@ -53,7 +53,7 @@ function stripVerdict(fb) {
   return out;
 }
 
-// "M1L1V2" -> "Refer to Module 1 Lesson 1 Video: The Fundamentals and Why the Three Words Differ"
+// "M1L1V2" -> "Refer to Module 1 Lesson 1 Video: Benefits for Body, Mind, Emotions, and Spirit"
 //
 // Module and lesson spell out in full words and the asset kind carries NO number. The title is
 // what identifies the item for the learner, so the ordinal is internal bookkeeping and never

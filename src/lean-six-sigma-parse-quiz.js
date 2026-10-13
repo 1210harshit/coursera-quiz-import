@@ -41,6 +41,7 @@
 const fs = require('fs');
 const path = require('path');
 const { lines } = require('./lib-lines');
+const { punctuate } = require('./lib-punctuation');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const SLUG = 'lean-six-sigma';
@@ -91,7 +92,7 @@ const MAPPED  = /^Mapped to\s*:\s*(M\d+L\d+V\d+)\b/i;
 //   full label     Explanation for Option B (Correct):    <- this course, every option labelled
 //                  Explanation for Option A:                 in full, "(Correct)" optional
 //
-//   shared header  Explanation for Option B (Correct):    <- soft-skills, emotional-intelligence
+//   shared header  Explanation for Option B (Correct):    <- lean-six-sigma, lean-six-sigma
 //                  Explanation for Other Options:            and the rest of the graded family
 //                  A: …
 //
@@ -256,7 +257,7 @@ for (const n of MODULES) {
 // 218 lines identical to CommunicationSkills_PracticeQuiz.docx. Only 4 of its 16 questions
 // belonged to module 1. The check is kept in every course built from that family because the
 // mistake is one a person makes while assembling the sources, not one a parser can foresee.
-// Negotiating's four files are clean: 10 questions each, each mapping inside its own module.
+// This course's four files are clean: 10 questions each, every mapping inside its own module.
 const dropped = [];
 for (let i = modules.length - 1; i >= 0; i--) {
   const mo = modules[i];
@@ -288,6 +289,17 @@ for (const mo of modules) {
   }
 }
 
+// PUNCTUATION. Missing end marks and broken quote pairs are repaired before anything is built
+// — see lib-punctuation.js for the rules, including why an option set written WITHOUT end marks
+// throughout is left alone rather than "fixed" into the author's own style. Every change is
+// recorded on the question as q.punct, with the source wording kept in q.original, so a
+// punctuation fix can never quietly stand in for a real mismatch.
+//
+// The log labels each change by document, so each unit carries a `file` for the call only.
+modules.forEach(u => { u.file = `Graded M${u.num}`; });
+const punctLog = punctuate(modules, { allOptions: true });
+modules.forEach(u => { delete u.file; });
+
 if (process.argv.includes('--report')) {
   let total = 0, scen = 0;
   const key = {};
@@ -310,9 +322,12 @@ if (process.argv.includes('--report')) {
   console.log(`prompt lines:      ${all.filter(q => q.prompt.length > 1).length} questions use more than `
     + `one line, ${all.filter(q => q.prompt.length === 1).length} are one line`);
   console.log(`longest line:      ${longest} characters`);
+  console.log(`\npunctuation added or corrected: ${punctLog.length}`);
+  punctLog.forEach(r => console.log('  ' + r));
   console.log(`\nwarnings: ${warn.length}`);
   warn.forEach(w => console.log('  ' + w));
 } else {
   warn.forEach(w => console.error('WARN ' + w));
+  punctLog.forEach(r => console.error('PUNC ' + r));
   console.log(JSON.stringify(modules, null, 2));
 }

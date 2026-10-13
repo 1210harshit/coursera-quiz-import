@@ -1,4 +1,4 @@
-// Builder for the Soft Skills for Work and Life graded assessments — one Assignment Import
+// Builder for the Soft Skills for Work and Life: Attitude to Interview graded assessments — one Assignment Import
 // .docx per module, four in all.
 //
 // The same builder as ai-products', which is genai-pm's apart from stripVerdict below: this
@@ -16,6 +16,9 @@
 const fs = require('fs');
 const path = require('path');
 const { zipDir } = require('./lib-zipwriter');
+const { spellOut, attach, trailer, isPlain, wrap, REF_OWN_LINE, SEP, DIAGNOSTIC_REFERENCE }
+  = require('./soft-skills-lib-refer.js');
+const JOIN_PROMPT = process.argv.includes('--join-prompt');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const TMPL = path.join(SP, 'tmpl');
@@ -53,7 +56,7 @@ function stripVerdict(fb) {
 // The diagnostic runs BEFORE any video is watched, so its feedback cannot point at one. It
 // points at the module the question is drawn from, which is also what the diagnostic is for:
 // routing the learner to where their attention is most needed.
-//   1 -> "Refer to Module 1: Laying Down a Solid Foundation: Soft Skills, Attitude, and Character"
+//   1 -> "Refer to Module 1: There Is a New Kind of Intelligence in Town"
 // The module title passes through verbatim — no whitespace normalisation.
 function referLine(module) {
   const m = MMETA['M' + module];
@@ -223,10 +226,20 @@ function buildBody(mo) {
     //
     // Joining loses no word — only the line break becomes a space, which is how the sentence
     // reads anyway ("… Nobody outside the team notices. How should this be read?").
-    const promptParas = [(Array.isArray(q.prompt) ? q.prompt : [q.prompt])
-      .map(line => String(line).trim())
-      .filter(Boolean)
-      .join(' ')].filter(t => t.trim());
+    // The source's paragraph structure reaches the learner: a scenario written as several
+    // paragraphs with a closing question arrives that way, not as one block of text. The gap
+    // between them is paragraph SPACING (gapAfter below), never an empty paragraph — a blank
+    // line there would end the prompt as far as the importer is concerned.
+    //
+    // This overturns the repo's oldest rule, that a second prompt paragraph is an unmatched
+    // line which can fail the WHOLE document. That rule rested on a single failed upload that
+    // was never isolated, and its close cousin was disproved by managing-break-probe.js.
+    //
+    // --join-prompt restores the single-line form, and is the first thing to try if an import
+    // ever fails on a document built from here on. The verifier takes the same flag.
+    const rawParas = (Array.isArray(q.prompt) ? q.prompt : [q.prompt])
+      .map(line => String(line).trim()).filter(Boolean);
+    const promptParas = (JOIN_PROMPT ? [rawParas.join(' ')] : rawParas).filter(t => t.trim());
 
     // A prompt line beginning "Word:" is read by the importer as an answer option — the
     // failure that rejected every scenario question on osha. The documented failure is a
@@ -250,6 +263,7 @@ function buildBody(mo) {
     });
     P.push(blank());
     const refer = referLine(q.module);
+    const STYLE_KEY = 'diagnostic';
     for (const o of q.options) {
       const star = o.letter === q.correct ? '*' : '';
       P.push(para([[`${star}${o.letter}: ${o.text}`]]));
@@ -259,8 +273,20 @@ function buildBody(mo) {
       // no line breaks at all, matching Coursera's own convention of putting the review
       // pointer inline in the feedback sentence.
       // Explanation passes through verbatim — spacing inside it is preserved exactly.
-      const fbText = 'Feedback: ' + stripVerdict(q.feedback[o.letter] || '') + ' (' + refer + ')';
-      P.push(para([[fbText]]));
+      // Explanation, then the reference as its OWN zero-spaced paragraph directly below it —
+      // nothing may sit between them. See soft-skills-lib-refer.js for the probe that
+      // settled this encoding, and pass --no-br to both builder and verifier for one line.
+      const fbBody = 'Feedback: ' + stripVerdict(q.feedback[o.letter] || '');
+      const fbRef = wrap(refer, STYLE_KEY);
+      if (!DIAGNOSTIC_REFERENCE) {
+        // Feedback alone: see DIAGNOSTIC_REFERENCE in the lib for why this quiz carries none.
+        P.push(para([[fbBody]]));
+      } else if (REF_OWN_LINE) {
+        P.push(para([[fbBody]]));
+        P.push(para([[fbRef]], { tight: true }));
+      } else {
+        P.push(para([[fbBody + ' ' + fbRef]]));
+      }
       P.push(blank());
     }
   }

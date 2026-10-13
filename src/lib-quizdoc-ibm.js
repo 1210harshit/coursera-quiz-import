@@ -45,7 +45,8 @@ const { lines } = require('./lib-lines');
 // mid-document. Reading only the first form lost 26 of its 107 questions outright, and
 // treating "Reading M2L1" as a type produced a warning about a question that is perfectly
 // well formed. So the suffix is captured and classified rather than assumed to be a type.
-const Q_HEAD = /^(?:Question\s+(\d+)|Q(\d+))\s*(?:[-–—]\s*(.+?)|\((\s*.+?\s*)\)|\s+([A-Za-z].*?))?\s*$/i;
+//     Question 1 : Multiple choice, shuffle     a COLON, in four files of Course 5
+const Q_HEAD = /^(?:Question\s+(\d+)|Q(\d+))\s*(?:[-–—:]\s*(.+?)|\((\s*.+?\s*)\)|\s+([A-Za-z].*?))?\s*$/i;
 // The suffix can also be a LIST of mappings joined by "+": "M1L1V1 + M1L3 Reading",
 // "M3L1 Reading + M3L2V2 + M3L3V1". Two graded quizzes state every question's sources that
 // way and carry no Asset line at all, so reading only a single bare code left twenty questions
@@ -466,7 +467,18 @@ function readQuizDoc(docxDir, label) {
     // A prompt sentence can legitimately open "A: " only if it is one character long, so the
     // option test is safe here; but a prompt that has not been seen yet takes precedence,
     // because every question states its prompt before its first option.
-    if (op && q.prompt.length) {
+    //
+    // UNLESS THE QUESTION HAS NO PROMPT AT ALL. One question in Course 5 goes straight from its
+    // Asset line to "A:", and taking that first option as the prompt is the worst of both: the
+    // question silently loses an option AND keeps an answer where its stem should be. A line
+    // that parses as an option, when no prompt has been seen, is an option — and the question
+    // is reported as missing its stem, which is a source defect, not a parse one.
+    if (op && !q.prompt.length && !q.promptMissing && op[3] && !/^.$/.test(op[3])) {
+      issues.push(`Q${q.num}: no question text — the first line after the header already parses `
+        + `as option ${op[2]}. The source is missing this question's stem.`);
+      q.promptMissing = true;
+    }
+    if (op && (q.prompt.length || q.promptMissing)) {
       // AN OPTION AND ITS FEEDBACK CAN SHARE A LINE. Six of these questions run the two
       // together — "A: <option text>.   Feedback: Incorrect. <explanation>" — where the rest
       // put them in separate paragraphs. Taking the whole line as the option text would leave

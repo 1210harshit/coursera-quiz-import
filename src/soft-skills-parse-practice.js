@@ -1,35 +1,38 @@
-// Parser for the Soft Skills for Work and Life PRACTICE quizzes — one per lesson, eight in all.
+// Parser for the Soft Skills for Work and Life: Attitude to Interview PRACTICE quizzes — one per lesson, eight in all.
 //
-// One document holds all four modules, split by "Module N – Title" headings and then by
-// "Lesson N: Title" headings. Within a lesson the grammar is identical to the graded quizzes
-// this course already ships (soft-skills-parse-quiz.js), so the two parsers agree line for line
-// on everything except the lesson split and the question renumbering:
+// This source uses a THIRD layout, and it is the reason this file differs most from its
+// siblings. One document holds all sixteen questions, grouped by MODULE:
 //
-//   Module 1 – Laying Down a Solid Foundation: Soft Skills, Attitude, and Character
-//   Lesson 1: Seeing What Soft Skills Are All About
-//   Q1. Which soft skill is placed first among the ten, and why?
-//   A. Attitude, because a company can train for aptitude afterward                <- B, C, D likewise
-//   ✅ Correct Answer: A
+//   Module 1 – Understanding Conflict in the Workplace     <- four headings, one per module
+//   Q1. Scenario:
+//   Two of your people are arguing about where a shelf of vendor binders should live …
+//   A. A durable outcome, since the dispute is genuinely about storage and nothing more
+//   ✅ Correct Answer: B                                    <- B, C, D likewise
 //   Mapped to: M1L1V1
-//   Explanation for Option A (Correct):
-//   Your attitude, not your aptitude, determines your success. …
+//   Explanation for Option B (Correct):
+//   One of them values respect and his workspace keeps being encroached on …
 //   Explanation for Other Options:
-//   B: Communication is fourth on the list, though its consequences are real.      <- C, D likewise
+//   A: The binders were never about binders, which is the point the example is used to make.
 //
-// Question numbers run 1-16 across the whole document and are renumbered 1-2 within each
-// lesson, as ai-products does across modules. The source number is kept and checked against the
-// position, so a question moved between lessons without renumbering is reported.
+// NO LESSON HEADING EXISTS ANYWHERE, yet the unit of output is still the lesson: the outline
+// plans one practice quiz per lesson, eight in all, and the workbook carries eight lesson-level
+// Practice Assignment rows. The lesson is recovered from each question own "Mapped to: MxLyVz"
+// code, where y IS the lesson — so questions are routed by their own mapping rather than by
+// position, and the split is derived rather than assumed. See the section splitter below.
 //
-// The unit of output is the LESSON, not the module: Coursera holds one practice quiz per lesson,
-// so this emits eight units and the builder writes eight documents. Every other quiz parser in
-// this repository emits one unit per module, which is why the shape carries both numbers.
+// The other two layouts are still accepted, because these courses share a generator and a later
+// revision is free to switch: "Module N, Lesson N – Title" on one line, or "Module N: Title"
+// followed by "Lesson N: Title".
+//
+// Question numbers restart at 1 within each module here, where other courses run 1-16 across the
+// document. Both are accepted; a number matching neither scheme is what gets reported.
 //
 // Each lesson holds two questions, and the sixteen between them reference all sixteen of the
-// course's videos exactly once. Both facts are checked rather than assumed — a lesson whose two
-// questions point at the same video, or at a video in another lesson, is reported.
+// course videos exactly once. Both facts are checked rather than assumed.
 const fs = require('fs');
 const path = require('path');
 const { lines } = require('./lib-lines');
+const { punctuate } = require('./lib-punctuation');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const SLUG = 'soft-skills';
@@ -42,18 +45,54 @@ if (!fs.existsSync(outlinePath)) {
     + `  node src/soft-skills-parse-outline.js > ${outlinePath}`);
   process.exit(1);
 }
-const { map: VIDEOS, meta: MMETA } = JSON.parse(fs.readFileSync(outlinePath, 'utf8'));
+const { map: VIDEOS, meta: MMETA, cumulativeAlias: ALIAS = {} } =
+  JSON.parse(fs.readFileSync(outlinePath, 'utf8'));
+
+// Same V-numbering difference the graded quizzes have: this document counts V across the MODULE
+// (M1L2V3) where the outline restarts it each lesson (M1L2V1). The translation is derived once
+// in outline.json as `cumulativeAlias` so the two parsers cannot drift. Applied only when the
+// cited code resolves to nothing, and always reported.
+function resolveMapped(code, where) {
+  if (!code || VIDEOS[code]) return code;
+  const alias = ALIAS[code];
+  if (!alias) return code;
+  warn.push(`${where}: cites ${code}, which the outline has no video for. The quiz counts V across `
+    + `the module and the outline restarts it each lesson, so this resolves to ${alias} — `
+    + `"${VIDEOS[alias].video}"`);
+  return alias;
+}
 
 const text = s => String(s).replace(/ /g, ' ').replace(/^[ \t]+|[ \t]+$/g, '');
 
-const MODULE  = /^Module\s+(\d+)\s*[-–—:]\s*(.+)$/i;
-const LESSON  = /^Lesson\s+(\d+)\s*:\s*(.+)$/i;
+// The two heading layouts this template produces — see the section splitter below for why both
+// are supported. The separator class is wide on all three because the courses built to this
+// template use a colon, a hyphen and an en dash interchangeably.
+//
+//   COMBINED  "Module 1, Lesson 1 – Title"   emotional-intelligence, critical-thinking
+//   MODULE    "Module 1: Title"              coaching-mentoring, lean-six-sigma, dei,
+//                                            conflict-resolution, mindfulness, resilience,
+//                                            storytelling-presentations
+//   LESSON    "Lesson 1: Title"              negotiating and soft-skills state BOTH, module then lesson
+//
+// COMBINED is tested FIRST everywhere it is used: "Module 1, Lesson 1 – Title" would otherwise
+// also satisfy MODULE, which would take "1" as the module and ", Lesson 1 – Title" as its title.
+const COMBINED = /^Module\s+(\d+)\s*,\s*Lesson\s+(\d+)\s*[-–—:]\s*(.+)$/i;
+const MODULE   = /^Module\s+(\d+)\s*[-–—:]\s*(.+)$/i;
+const LESSON   = /^Lesson\s+(\d+)\s*[-–—:]\s*(.+)$/i;
 const Q_HEAD  = /^Q(\d+)\.\s*(.*)$/;
 const SCENARIO = /^Scenario\s*:\s*$/i;
 const OPTION  = /^([A-D])\.\s*(.+)$/;
 const KEY     = /^\s*(?:✅\s*)?Correct Answer\s*:\s*([A-D])\b/i;
 const MAPPED  = /^Mapped to\s*:\s*(M\d+L\d+V\d+)\b/i;
-const EXPL_C  = /^Explanation for Option\s+([A-D])\s*\(Correct\)\s*:\s*(.*)$/i;
+// This document uses the MIXED layout, the same one its graded quizzes use: the key is labelled
+// in full — "Explanation for Option C (Correct):" — and the other three then arrive under a
+// single "Explanation for Other Options:" header as bare "A:" lines. So both modes are live in
+// one document and all three patterns below are load-bearing here.
+//
+// Other courses on this template label every option in full and never emit the shared header
+// (soft-skills is the one to read). Keeping both paths is what lets this parser serve
+// either without a fork; EXPL_ANY simply never sees the header in those.
+const EXPL_ANY = /^Explanation for Option\s+([A-D])\s*(?:\((Correct|Incorrect)\))?\s*:\s*(.*)$/i;
 const EXPL_O  = /^Explanation for Other Options\s*:\s*$/i;
 const EXPL_I  = /^([A-D])\s*:\s*(.+)$/;
 
@@ -68,31 +107,106 @@ if (!fs.existsSync(src)) {
 }
 const L = lines(src).map(text).filter(s => s.trim());
 
-// --- split into module -> lesson sections --------------------------------------------------
-// A lesson's body ends at the NEXT HEADING OF EITHER KIND, not at the next lesson heading. The
-// module heading that opens each new module sits between the previous lesson's last question and
-// that module's first lesson heading, so ending on lesson headings alone leaves it inside the
-// preceding question — where it is read as a continuation line of the last explanation and
-// arrives in the built document as a line break inside a Feedback: paragraph, which the verifier
-// rejects. Three of the eight lessons are affected: the last one in each of modules 1, 2 and 3.
+// --- split into lesson sections -------------------------------------------------------------
+// BOTH Dummies layouts are accepted, because the four courses built to this template use two:
+//
+//   combined   "Module 1, Lesson 1 – Title"        one line, lesson title only
+//   split      "Module 1: Title"                   two lines, module title stated too
+//              "Lesson 1: Title"
+//
+// soft-skills and soft-skills write the first, soft-skills and this course the
+// second. Supporting both costs one extra branch and removes the need to fork this file again.
+//
+// A lesson's body ends at the NEXT HEADING OF EITHER KIND, not at the next lesson heading. In the
+// split layout the module heading that opens each new module sits between the previous lesson's
+// last question and that module's first lesson heading; bounding on lesson headings alone would
+// sweep it into the preceding explanation, where it arrives as a line break inside a Feedback:
+// paragraph and the verifier rejects it.
 const headings = [];
-L.forEach((l, i) => { if (MODULE.test(l) || LESSON.test(l)) headings.push(i); });
+L.forEach((l, i) => { if (COMBINED.test(l) || MODULE.test(l) || LESSON.test(l)) headings.push(i); });
 
 const sections = [];
 let curMod = null, curModTitle = '';
 L.forEach((l, i) => {
   let m;
+  if ((m = l.match(COMBINED))) {
+    // The combined form states no module title; the outline is the only authority for it.
+    sections.push({ module: +m[1], moduleSourceTitle: '', lesson: +m[2], lessonSourceTitle: m[3].trim(), at: i });
+    curMod = +m[1]; curModTitle = '';
+    return;
+  }
   if ((m = l.match(MODULE))) { curMod = +m[1]; curModTitle = m[2].trim(); return; }
   if ((m = l.match(LESSON)) && curMod) {
     sections.push({ module: curMod, moduleSourceTitle: curModTitle, lesson: +m[1], lessonSourceTitle: m[2].trim(), at: i });
   }
 });
-if (!sections.length) { console.error('no "Module N" / "Lesson N" headings found'); process.exit(1); }
+// THIRD LAYOUT: grouped by MODULE only, with no lesson heading anywhere. This source writes four
+// "Module N – Title" headings for its sixteen questions and nothing finer, yet the unit of output
+// is still the lesson — the outline plans one practice quiz per lesson, eight in all, and the
+// workbook carries eight lesson-level Practice Assignment rows.
+//
+// The lesson is recoverable without guessing: every question states its own "Mapped to: MxLyVz",
+// and y IS the lesson. So each module heading is split into one section per lesson it actually
+// contains, in the order the lessons first appear, and the questions are routed by their own
+// mapping rather than by position. A question whose mapping is missing or unreadable cannot be
+// placed and is reported rather than dropped into whichever lesson came last.
+if (!sections.some(s => s.lesson)) {
+  const modHeads = [];
+  L.forEach((l, i) => { const m = l.match(MODULE); if (m) modHeads.push({ module: +m[1], title: m[2].trim(), at: i }); });
+  if (modHeads.length) {
+    warn.push(`the practice document is grouped by MODULE only (${modHeads.length} headings, no lesson `
+      + 'headings). Each question has been routed to its lesson using its own "Mapped to:" code.');
+    sections.length = 0;
+    modHeads.forEach((mh, k) => {
+      const end = k + 1 < modHeads.length ? modHeads[k + 1].at : L.length;
+      // Which lessons does this module's block actually contain, and where does each start?
+      const seen = new Map();
+      for (let i = mh.at + 1; i < end; i++) {
+        const mm = L[i].match(/^Mapped to\s*:\s*M(\d+)L(\d+)V\d+/i);
+        if (!mm || +mm[1] !== mh.module) continue;
+        const les = +mm[2];
+        if (!seen.has(les)) {
+          // The section must start at the question header this mapping belongs to, not at the
+          // mapping line, so walk back to the nearest "Q<n>." above it.
+          let qAt = i;
+          while (qAt > mh.at && !Q_HEAD.test(L[qAt])) qAt--;
+          seen.set(les, qAt - 1);
+        }
+      }
+      [...seen.entries()].sort((a, b) => a[0] - b[0]).forEach(([les, at]) => {
+        sections.push({ module: mh.module, moduleSourceTitle: mh.title, lesson: les, lessonSourceTitle: '', at });
+      });
+    });
+    sections.sort((a, b) => a.at - b.at);
+    // These sections have no heading line of their own: `at` is one line ABOVE the first question
+    // header, so that the reader's slice(at + 1, end) starts exactly at that header. The bound
+    // cannot come from `headings` here — a synthetic section's own start would terminate it — so
+    // each carries an explicit `end`, which is the next section's first question header.
+    sections.forEach((s, k) => {
+      s.end = k + 1 < sections.length ? sections[k + 1].at + 1 : L.length;
+      // …but never past a MODULE heading. The heading that opens the next module sits between the
+      // previous lesson's last explanation and the next lesson's first question, so bounding only
+      // on the next question header sweeps it into that explanation — where it arrives as a line
+      // break inside a Feedback: paragraph and the verifier rejects the document. This bit the
+      // last lesson of modules 1, 2 and 3 before the clamp was added.
+      const h = modHeads.find(mh => mh.at > s.at && mh.at < s.end);
+      if (h) s.end = h.at;
+    });
+  }
+}
+if (!sections.length) {
+  console.error('no lesson headings found — expected "Module N, Lesson N: Title" on one line, '
+    + '"Module N: Title" followed by "Lesson N: Title", or module-only headings whose questions '
+    + 'carry "Mapped to: MxLyVz" codes');
+  process.exit(1);
+}
 
 let running = 0;
+const perModule = {};
+let numberedPerModule = false;
 sections.forEach((sec) => {
   const next = headings.filter(i => i > sec.at);
-  const end = next.length ? next[0] : L.length;
+  const end = sec.end !== undefined ? sec.end : (next.length ? next[0] : L.length);
   const body = L.slice(sec.at + 1, end);
 
   const mmeta = MMETA['M' + sec.module] || { title: '', lessons: {} };
@@ -146,7 +260,7 @@ sections.forEach((sec) => {
     if (!q.prompt.length) { warn.push(`${where}: no prompt — question skipped`); return; }
 
     // ---- options, key, mapping, explanations ----------------------------------------------
-    let mode = null, pendingLetter = null;
+    let mode = null, pendingLetter = null, lastExplLetter = null;
     for (; i < blk.length; i++) {
       const l = blk[i];
       let m;
@@ -157,20 +271,26 @@ sections.forEach((sec) => {
       }
       if ((m = l.match(KEY)))    { q.correct = m[1].toUpperCase(); mode = null; continue; }
       if ((m = l.match(MAPPED))) { q.mapped = m[1].toUpperCase();  mode = null; continue; }
-      if ((m = l.match(EXPL_C))) {
-        q.correctExplFor = m[1].toUpperCase();
-        pendingLetter = q.correctExplFor;
-        if (m[2] && m[2].trim()) { q.feedback[pendingLetter] = m[2].trim(); pendingLetter = null; }
-        mode = 'correct';
+      // One labelled block per option. The label may carry its text on the same line or leave it
+      // to the next, so the letter is held in pendingLetter either way — the same mechanism the
+      // graded parser uses for its "(Correct)" block.
+      if ((m = l.match(EXPL_ANY))) {
+        const L = m[1].toUpperCase();
+        if (m[2] && /^correct$/i.test(m[2])) q.correctExplFor = q.correctExplFor || L;
+        pendingLetter = L;
+        if (m[3] && m[3].trim()) { q.feedback[L] = m[3].trim(); pendingLetter = null; }
+        mode = 'expl';
+        lastExplLetter = L;
         continue;
       }
       if (EXPL_O.test(l)) { mode = 'other'; pendingLetter = null; continue; }
-      if (mode === 'other' && (m = l.match(EXPL_I))) { q.feedback[m[1].toUpperCase()] = m[2]; continue; }
-      if (mode === 'correct' && pendingLetter) { q.feedback[pendingLetter] = l; pendingLetter = null; continue; }
-      if (mode && Object.keys(q.feedback).length) {
-        const last = mode === 'correct' ? q.correctExplFor
-          : Object.keys(q.feedback).filter(x => x !== q.correctExplFor).pop();
-        if (last && q.feedback[last]) { q.feedback[last] += '\n' + l; continue; }
+      if (mode === 'other' && (m = l.match(EXPL_I))) { q.feedback[m[1].toUpperCase()] = m[2]; lastExplLetter = m[1].toUpperCase(); continue; }
+      if (pendingLetter) { q.feedback[pendingLetter] = l; pendingLetter = null; continue; }
+      // A continuation of whichever explanation is open. With one labelled block per option,
+      // that is simply the last letter seen — no need to infer it from which keys exist.
+      if (mode && lastExplLetter && q.feedback[lastExplLetter]) {
+        q.feedback[lastExplLetter] += '\n' + l;
+        continue;
       }
       warn.push(`${where}: unmatched line "${l.slice(0, 60)}"`);
     }
@@ -178,6 +298,24 @@ sections.forEach((sec) => {
     // ---- checks ----------------------------------------------------------------------------
     const letters = q.options.map(o => o.letter).join('');
     if (letters !== 'ABCD') { warn.push(`${where}: options are "${letters}", expected ABCD — skipped`); return; }
+    // TWO OPTIONS WITH THE SAME TEXT. Coursera rejects the question outright — "Duplicate
+    // answers are not allowed" — and every other check here passes: four options, one key,
+    // four feedback blocks, a resolving reference. It cannot be repaired at this end, since
+    // distinct feedback under identical options means the distractors were never written and
+    // inventing them is authoring assessment content. The verifier checks the built document
+    // again, so a duplicate cannot reach an upload either way.
+    {
+      const seenOpt = new Map();
+      for (const o of q.options) {
+        const k = String(o.text).replace(/\s+/g, ' ').trim().toLowerCase();
+        if (!k) continue;
+        if (seenOpt.has(k)) {
+          warn.push(`${where}: options ${seenOpt.get(k)} and ${o.letter} have identical text — `
+            + 'Coursera rejects the question ("Duplicate answers are not allowed"); the source '
+            + 'needs distinct distractors before this can be built.');
+        } else seenOpt.set(k, o.letter);
+      }
+    }
     if (!q.correct) { warn.push(`${where}: no "Correct Answer:" line — skipped`); return; }
     if (!q.correctExplFor) { warn.push(`${where}: no "(Correct)" explanation label — skipped`); return; }
     // Two independent statements of the key; a disagreement would star the wrong option.
@@ -188,6 +326,7 @@ sections.forEach((sec) => {
     const missing = LET.filter(x => !q.feedback[x]);
     if (missing.length) { warn.push(`${where}: no explanation for ${missing.join(', ')} — skipped`); return; }
     if (!q.mapped) { warn.push(`${where}: no "Mapped to:" line — skipped`); return; }
+    q.mapped = resolveMapped(q.mapped, where);
     if (!VIDEOS[q.mapped]) { warn.push(`${where}: mapping ${q.mapped} is not in the outline — skipped`); return; }
     // A practice quiz belongs to its lesson, so its questions must point inside that lesson.
     const v = VIDEOS[q.mapped];
@@ -195,8 +334,18 @@ sections.forEach((sec) => {
       warn.push(`${where}: mapping ${q.mapped} points at M${v.module}L${v.lesson}, outside this lesson — `
         + 'a practice quiz question that reviews another lesson is a content decision, not a mapping to repair');
     }
-    if (q.sourceNum !== running) {
-      warn.push(`${where}: numbered ${q.sourceNum} in the source but sits at document position ${running}`);
+    // Two numbering conventions exist across these courses: 1-16 across the whole document, and
+    // 1-N restarting at each module. Both are fine — what matters is that a question's number
+    // agrees with SOME consistent scheme, because a number that agrees with neither means one was
+    // moved without renumbering. The per-module position is tracked alongside the document one and
+    // the mismatch is only reported when the number matches neither.
+    perModule[sec.module] = (perModule[sec.module] || 0) + 1;
+    if (q.sourceNum !== running && q.sourceNum !== perModule[sec.module]) {
+      warn.push(`${where}: numbered ${q.sourceNum} in the source, but it sits at document position `
+        + `${running} and at position ${perModule[sec.module]} within module ${sec.module} — it `
+        + 'matches neither, so a question was moved or inserted without renumbering');
+    } else if (q.sourceNum !== running) {
+      numberedPerModule = true;
     }
 
     unit.questions.push(q);
@@ -217,6 +366,23 @@ for (const u of units) {
   }
 }
 
+if (numberedPerModule) {
+  warn.push('the source numbers questions 1-N within each MODULE rather than 1-16 across the '
+    + 'document. Both conventions appear across these courses; it is noted once here so the '
+    + 'per-question position check does not report every question.');
+}
+
+// PUNCTUATION. Missing end marks and broken quote pairs are repaired before anything is built
+// — see lib-punctuation.js for the rules, including why an option set written WITHOUT end marks
+// throughout is left alone rather than "fixed" into the author's own style. Every change is
+// recorded on the question as q.punct, with the source wording kept in q.original, so a
+// punctuation fix can never quietly stand in for a real mismatch.
+//
+// The log labels each change by document, so each unit carries a `file` for the call only.
+units.forEach(u => { u.file = `Practice M${u.num}L${u.lesson}`; });
+const punctLog = punctuate(units, { allOptions: true });
+units.forEach(u => { delete u.file; });
+
 if (process.argv.includes('--report')) {
   let total = 0;
   const key = {};
@@ -235,9 +401,12 @@ if (process.argv.includes('--report')) {
   console.log(`answer key spread: ${LET.map(l => `${l}:${key[l] || 0}`).join(' ')}`);
   console.log(`video coverage:    ${used.size} of ${allVideos.length} videos referenced`);
   console.log(`longest line:      ${longest} characters`);
+  console.log(`\npunctuation added or corrected: ${punctLog.length}`);
+  punctLog.forEach(r => console.log('  ' + r));
   console.log(`\nwarnings: ${warn.length}`);
   warn.forEach(w => console.log('  ' + w));
 } else {
   warn.forEach(w => console.error('WARN ' + w));
+  punctLog.forEach(r => console.error('PUNC ' + r));
   console.log(JSON.stringify(units, null, 2));
 }

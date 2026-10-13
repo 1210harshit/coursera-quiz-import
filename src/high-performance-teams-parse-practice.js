@@ -32,6 +32,7 @@
 const fs = require('fs');
 const path = require('path');
 const { lines } = require('./lib-lines');
+const { punctuate } = require('./lib-punctuation');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const SLUG = 'high-performance-teams';
@@ -68,8 +69,11 @@ const text = s => String(s).replace(/ /g, ' ').replace(/^[ \t]+|[ \t]+$/g, '');
 // template use a colon, a hyphen and an en dash interchangeably.
 //
 //   COMBINED  "Module 1, Lesson 1 – Title"   emotional-intelligence, critical-thinking
-//   MODULE    "Module 1: Title"              soft-skills, high-performance-teams
-//   LESSON    "Lesson 1: Title"
+//   MODULE    "Module 1: Title"              coaching-mentoring, lean-six-sigma, dei,
+//                                            conflict-resolution, mindfulness, resilience,
+//                                            storytelling-presentations, agile-pm,
+//                                            high-performance-teams
+//   LESSON    "Lesson 1: Title"              negotiating and soft-skills state BOTH, module then lesson
 //
 // COMBINED is tested FIRST everywhere it is used: "Module 1, Lesson 1 – Title" would otherwise
 // also satisfy MODULE, which would take "1" as the module and ", Lesson 1 – Title" as its title.
@@ -81,12 +85,15 @@ const SCENARIO = /^Scenario\s*:\s*$/i;
 const OPTION  = /^([A-D])\.\s*(.+)$/;
 const KEY     = /^\s*(?:✅\s*)?Correct Answer\s*:\s*([A-D])\b/i;
 const MAPPED  = /^Mapped to\s*:\s*(M\d+L\d+V\d+)\b/i;
-// EVERY option is labelled in full here — "Explanation for Option A:" — where the graded quizzes
-// of this same course write "Explanation for Other Options:" once and then bare "A:" lines. So
-// the letter always arrives on its own label and there is no shared header to switch mode on.
-// The "(Correct)" marker is optional and is what identifies the key's second witness.
+// This document uses the MIXED layout, the same one its graded quizzes use: the key is labelled
+// in full — "Explanation for Option C (Correct):" — and the other three then arrive under a
+// single "Explanation for Other Options:" header as bare "A:" lines. So both modes are live in
+// one document and all three patterns below are load-bearing here.
+//
+// Other courses on this template label every option in full and never emit the shared header
+// (high-performance-teams is the one to read). Keeping both paths is what lets this parser serve
+// either without a fork; EXPL_ANY simply never sees the header in those.
 const EXPL_ANY = /^Explanation for Option\s+([A-D])\s*(?:\((Correct|Incorrect)\))?\s*:\s*(.*)$/i;
-// Kept for the graded-style layout, in case a later revision of this document adopts it.
 const EXPL_O  = /^Explanation for Other Options\s*:\s*$/i;
 const EXPL_I  = /^([A-D])\s*:\s*(.+)$/;
 
@@ -108,7 +115,7 @@ const L = lines(src).map(text).filter(s => s.trim());
 //   split      "Module 1: Title"                   two lines, module title stated too
 //              "Lesson 1: Title"
 //
-// emotional-intelligence and critical-thinking write the first, soft-skills and this course the
+// high-performance-teams and high-performance-teams write the first, high-performance-teams and this course the
 // second. Supporting both costs one extra branch and removes the need to fork this file again.
 //
 // A lesson's body ends at the NEXT HEADING OF EITHER KIND, not at the next lesson heading. In the
@@ -292,6 +299,24 @@ sections.forEach((sec) => {
     // ---- checks ----------------------------------------------------------------------------
     const letters = q.options.map(o => o.letter).join('');
     if (letters !== 'ABCD') { warn.push(`${where}: options are "${letters}", expected ABCD — skipped`); return; }
+    // TWO OPTIONS WITH THE SAME TEXT. Coursera rejects the question outright — "Duplicate
+    // answers are not allowed" — and every other check here passes: four options, one key,
+    // four feedback blocks, a resolving reference. It cannot be repaired at this end, since
+    // distinct feedback under identical options means the distractors were never written and
+    // inventing them is authoring assessment content. The verifier checks the built document
+    // again, so a duplicate cannot reach an upload either way.
+    {
+      const seenOpt = new Map();
+      for (const o of q.options) {
+        const k = String(o.text).replace(/\s+/g, ' ').trim().toLowerCase();
+        if (!k) continue;
+        if (seenOpt.has(k)) {
+          warn.push(`${where}: options ${seenOpt.get(k)} and ${o.letter} have identical text — `
+            + 'Coursera rejects the question ("Duplicate answers are not allowed"); the source '
+            + 'needs distinct distractors before this can be built.');
+        } else seenOpt.set(k, o.letter);
+      }
+    }
     if (!q.correct) { warn.push(`${where}: no "Correct Answer:" line — skipped`); return; }
     if (!q.correctExplFor) { warn.push(`${where}: no "(Correct)" explanation label — skipped`); return; }
     // Two independent statements of the key; a disagreement would star the wrong option.
@@ -348,6 +373,17 @@ if (numberedPerModule) {
     + 'per-question position check does not report every question.');
 }
 
+// PUNCTUATION. Missing end marks and broken quote pairs are repaired before anything is built
+// — see lib-punctuation.js for the rules, including why an option set written WITHOUT end marks
+// throughout is left alone rather than "fixed" into the author's own style. Every change is
+// recorded on the question as q.punct, with the source wording kept in q.original, so a
+// punctuation fix can never quietly stand in for a real mismatch.
+//
+// The log labels each change by document, so each unit carries a `file` for the call only.
+units.forEach(u => { u.file = `Practice M${u.num}L${u.lesson}`; });
+const punctLog = punctuate(units, { allOptions: true });
+units.forEach(u => { delete u.file; });
+
 if (process.argv.includes('--report')) {
   let total = 0;
   const key = {};
@@ -366,9 +402,12 @@ if (process.argv.includes('--report')) {
   console.log(`answer key spread: ${LET.map(l => `${l}:${key[l] || 0}`).join(' ')}`);
   console.log(`video coverage:    ${used.size} of ${allVideos.length} videos referenced`);
   console.log(`longest line:      ${longest} characters`);
+  console.log(`\npunctuation added or corrected: ${punctLog.length}`);
+  punctLog.forEach(r => console.log('  ' + r));
   console.log(`\nwarnings: ${warn.length}`);
   warn.forEach(w => console.log('  ' + w));
 } else {
   warn.forEach(w => console.error('WARN ' + w));
+  punctLog.forEach(r => console.error('PUNC ' + r));
   console.log(JSON.stringify(units, null, 2));
 }

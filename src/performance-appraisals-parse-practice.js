@@ -3,18 +3,16 @@
 // This source uses a THIRD layout, and it is the reason this file differs most from its
 // siblings. One document holds all sixteen questions, grouped by MODULE:
 //
-//   Module 1 – The Purpose and Design of Performance Appraisal  <- four headings, per module
-//   Q1. A manager expects an argument in an upcoming appraisal and finds himself settling …
-//   A. Leniency arising from a close working relationship, which a distribution check would …
-//   Correct Answer: B                                        <- B, C, D likewise
+//   Module 1 – Understanding Conflict in the Workplace     <- four headings, one per module
+//   Q1. Scenario:
+//   Two of your people are arguing about where a shelf of vendor binders should live …
+//   A. A durable outcome, since the dispute is genuinely about storage and nothing more
+//   ✅ Correct Answer: B                                    <- B, C, D likewise
 //   Mapped to: M1L1V1
 //   Explanation for Option B (Correct):
-//   An annual review can produce inflated scores when managers choose ratings that make a …
+//   One of them values respect and his workspace keeps being encroached on …
 //   Explanation for Other Options:
-//   A: Leniency is a related but distinct bias.
-//
-// This course writes the question ON the header line for all sixteen. The bare "Q<n>." variant,
-// where the question follows in the next paragraph, is still handled — see the prompt note.
+//   A: The binders were never about binders, which is the point the example is used to make.
 //
 // NO LESSON HEADING EXISTS ANYWHERE, yet the unit of output is still the lesson: the outline
 // plans one practice quiz per lesson, eight in all, and the workbook carries eight lesson-level
@@ -34,6 +32,7 @@
 const fs = require('fs');
 const path = require('path');
 const { lines } = require('./lib-lines');
+const { punctuate } = require('./lib-punctuation');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const SLUG = 'performance-appraisals';
@@ -70,8 +69,12 @@ const text = s => String(s).replace(/ /g, ' ').replace(/^[ \t]+|[ \t]+$/g, '');
 // template use a colon, a hyphen and an en dash interchangeably.
 //
 //   COMBINED  "Module 1, Lesson 1 – Title"   emotional-intelligence, critical-thinking
-//   MODULE    "Module 1: Title"              soft-skills, performance-appraisals
-//   LESSON    "Lesson 1: Title"
+//   MODULE    "Module 1: Title"              coaching-mentoring, lean-six-sigma, dei,
+//                                            conflict-resolution, mindfulness, resilience,
+//                                            storytelling-presentations, agile-pm,
+//                                            high-performance-teams, inclusive-leadership,
+//                                            supply-chain, performance-appraisals
+//   LESSON    "Lesson 1: Title"              negotiating and soft-skills state BOTH, module then lesson
 //
 // COMBINED is tested FIRST everywhere it is used: "Module 1, Lesson 1 – Title" would otherwise
 // also satisfy MODULE, which would take "1" as the module and ", Lesson 1 – Title" as its title.
@@ -83,12 +86,15 @@ const SCENARIO = /^Scenario\s*:\s*$/i;
 const OPTION  = /^([A-D])\.\s*(.+)$/;
 const KEY     = /^\s*(?:✅\s*)?Correct Answer\s*:\s*([A-D])\b/i;
 const MAPPED  = /^Mapped to\s*:\s*(M\d+L\d+V\d+)\b/i;
-// EVERY option is labelled in full here — "Explanation for Option A:" — where the graded quizzes
-// of this same course write "Explanation for Other Options:" once and then bare "A:" lines. So
-// the letter always arrives on its own label and there is no shared header to switch mode on.
-// The "(Correct)" marker is optional and is what identifies the key's second witness.
+// This document uses the MIXED layout, the same one its graded quizzes use: the key is labelled
+// in full — "Explanation for Option C (Correct):" — and the other three then arrive under a
+// single "Explanation for Other Options:" header as bare "A:" lines. So both modes are live in
+// one document and all three patterns below are load-bearing here.
+//
+// Other courses on this template label every option in full and never emit the shared header
+// (performance-appraisals is the one to read). Keeping both paths is what lets this parser serve
+// either without a fork; EXPL_ANY simply never sees the header in those.
 const EXPL_ANY = /^Explanation for Option\s+([A-D])\s*(?:\((Correct|Incorrect)\))?\s*:\s*(.*)$/i;
-// Kept for the graded-style layout, in case a later revision of this document adopts it.
 const EXPL_O  = /^Explanation for Other Options\s*:\s*$/i;
 const EXPL_I  = /^([A-D])\s*:\s*(.+)$/;
 
@@ -110,7 +116,7 @@ const L = lines(src).map(text).filter(s => s.trim());
 //   split      "Module 1: Title"                   two lines, module title stated too
 //              "Lesson 1: Title"
 //
-// emotional-intelligence and critical-thinking write the first, soft-skills and this course the
+// performance-appraisals and performance-appraisals write the first, performance-appraisals and this course the
 // second. Supporting both costs one extra branch and removes the need to fork this file again.
 //
 // A lesson's body ends at the NEXT HEADING OF EITHER KIND, not at the next lesson heading. In the
@@ -200,7 +206,6 @@ if (!sections.length) {
 let running = 0;
 const perModule = {};
 let numberedPerModule = false;
-let bareHeaders = 0;
 sections.forEach((sec) => {
   const next = headings.filter(i => i > sec.at);
   const end = sec.end !== undefined ? sec.end : (next.length ? next[0] : L.length);
@@ -247,21 +252,15 @@ sections.forEach((sec) => {
 
     // ---- prompt --------------------------------------------------------------------------
     let i = 1;
-    // Three header layouts, and only the first is a scenario:
-    //
-    //   "Q1. Scenario:"   the label, with the scenario in the paragraphs below   -> hasScenario
-    //   "Q1."             bare, the question itself on the next paragraph        -> NOT a scenario
-    //   "Q1. <question>"  the question on the header line
-    //
-    // The bare form is the MAJORITY in this document — 13 of its 16 questions — so it is a layout
-    // variant, not a defect, and flagging each one buried the real warnings. It is counted and
-    // noted once instead. Marking it hasScenario would also be simply untrue: nothing precedes
-    // the question. The flag is metadata (no builder or verifier reads it), but it should still
-    // say what the source actually does.
     if (SCENARIO.test(head[2])) {
       q.hasScenario = true;
+      q.prompt.push(head[2]);
     } else if (!head[2]) {
-      bareHeaders++;
+      // BARE "Q4." HEADER. This source writes most of its questions with the number alone and
+      // the question in the paragraph below, mixing that with the "Q1. Scenario:" form in the
+      // same document. A bare header is a layout, not a scenario and not a defect: the prompt
+      // is simply gathered from the lines that follow, which the loop below already does.
+      // Marking these as scenarios would have mislabelled 13 of this course's 16 questions.
     } else {
       q.prompt.push(head[2]);
     }
@@ -307,6 +306,24 @@ sections.forEach((sec) => {
     // ---- checks ----------------------------------------------------------------------------
     const letters = q.options.map(o => o.letter).join('');
     if (letters !== 'ABCD') { warn.push(`${where}: options are "${letters}", expected ABCD — skipped`); return; }
+    // TWO OPTIONS WITH THE SAME TEXT. Coursera rejects the question outright — "Duplicate
+    // answers are not allowed" — and every other check here passes: four options, one key,
+    // four feedback blocks, a resolving reference. It cannot be repaired at this end, since
+    // distinct feedback under identical options means the distractors were never written and
+    // inventing them is authoring assessment content. The verifier checks the built document
+    // again, so a duplicate cannot reach an upload either way.
+    {
+      const seenOpt = new Map();
+      for (const o of q.options) {
+        const k = String(o.text).replace(/\s+/g, ' ').trim().toLowerCase();
+        if (!k) continue;
+        if (seenOpt.has(k)) {
+          warn.push(`${where}: options ${seenOpt.get(k)} and ${o.letter} have identical text — `
+            + 'Coursera rejects the question ("Duplicate answers are not allowed"); the source '
+            + 'needs distinct distractors before this can be built.');
+        } else seenOpt.set(k, o.letter);
+      }
+    }
     if (!q.correct) { warn.push(`${where}: no "Correct Answer:" line — skipped`); return; }
     if (!q.correctExplFor) { warn.push(`${where}: no "(Correct)" explanation label — skipped`); return; }
     // Two independent statements of the key; a disagreement would star the wrong option.
@@ -357,17 +374,22 @@ for (const u of units) {
   }
 }
 
-if (bareHeaders) {
-  warn.push(bareHeaders + ` of the ${units.reduce((a,u)=>a+u.questions.length,0)} questions write a bare "Q<n>." header with the ` +
-    'question itself on the next paragraph, rather than on the header line. Both layouts appear ' +
-    'across these courses; the prompt is read from the following paragraph either way.');
-}
-
 if (numberedPerModule) {
   warn.push('the source numbers questions 1-N within each MODULE rather than 1-16 across the '
     + 'document. Both conventions appear across these courses; it is noted once here so the '
     + 'per-question position check does not report every question.');
 }
+
+// PUNCTUATION. Missing end marks and broken quote pairs are repaired before anything is built
+// — see lib-punctuation.js for the rules, including why an option set written WITHOUT end marks
+// throughout is left alone rather than "fixed" into the author's own style. Every change is
+// recorded on the question as q.punct, with the source wording kept in q.original, so a
+// punctuation fix can never quietly stand in for a real mismatch.
+//
+// The log labels each change by document, so each unit carries a `file` for the call only.
+units.forEach(u => { u.file = `Practice M${u.num}L${u.lesson}`; });
+const punctLog = punctuate(units, { allOptions: true });
+units.forEach(u => { delete u.file; });
 
 if (process.argv.includes('--report')) {
   let total = 0;
@@ -387,9 +409,12 @@ if (process.argv.includes('--report')) {
   console.log(`answer key spread: ${LET.map(l => `${l}:${key[l] || 0}`).join(' ')}`);
   console.log(`video coverage:    ${used.size} of ${allVideos.length} videos referenced`);
   console.log(`longest line:      ${longest} characters`);
+  console.log(`\npunctuation added or corrected: ${punctLog.length}`);
+  punctLog.forEach(r => console.log('  ' + r));
   console.log(`\nwarnings: ${warn.length}`);
   warn.forEach(w => console.log('  ' + w));
 } else {
   warn.forEach(w => console.error('WARN ' + w));
+  punctLog.forEach(r => console.error('PUNC ' + r));
   console.log(JSON.stringify(units, null, 2));
 }

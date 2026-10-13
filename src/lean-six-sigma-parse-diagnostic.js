@@ -33,6 +33,7 @@
 const fs = require('fs');
 const path = require('path');
 const { lines } = require('./lib-lines');
+const { punctuate } = require('./lib-punctuation');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const SLUG = 'lean-six-sigma';
@@ -180,8 +181,8 @@ starts.forEach((start, k) => {
 
 // --- coverage, against the diagnostic's own stated design ----------------------------------
 // The planned spread is READ FROM THE DOCUMENT, not hardcoded. Every course built to this
-// template states it in the Question Bank line, and the courses disagree: emotional-intelligence
-// and negotiating plan 2/2/3/3, this one plans 3/3/2/2. A constant copied from a sibling course
+// template states it in the Question Bank line, and the courses disagree: lean-six-sigma
+// and lean-six-sigma plan 2/2/3/3, this one plans 3/3/2/2. A constant copied from a sibling course
 // reports four false warnings on the next one, which is exactly what it did here before this
 // was read properly.
 //
@@ -222,6 +223,17 @@ if (unit.questions.length !== 10) {
   warn.push(`${unit.questions.length} questions parsed, but the design note plans ten`);
 }
 
+// PUNCTUATION. Missing end marks and broken quote pairs are repaired before anything is built
+// — see lib-punctuation.js for the rules, including why an option set written WITHOUT end marks
+// throughout is left alone rather than "fixed" into the author's own style. Every change is
+// recorded on the question as q.punct, with the source wording kept in q.original, so a
+// punctuation fix can never quietly stand in for a real mismatch.
+//
+// The log labels each change by document, so each unit carries a `file` for the call only.
+unit.file = 'Diagnostic';
+const punctLog = punctuate([unit], { allOptions: true });
+delete unit.file;
+
 if (process.argv.includes('--report')) {
   const key = {};
   console.log(`${COURSE.title}`);
@@ -240,9 +252,12 @@ if (process.argv.includes('--report')) {
   console.log(`module spread:     ${Object.keys(PLANNED).map(m => `M${m}:${byModule[m] || 0}`).join(' ')}`);
   console.log(`answer key spread: ${LET.map(l => `${l}:${key[l] || 0}`).join(' ')}`);
   console.log(`longest line:      ${longest} characters`);
+  console.log(`\npunctuation added or corrected: ${punctLog.length}`);
+  punctLog.forEach(r => console.log('  ' + r));
   console.log(`\nwarnings: ${warn.length}`);
   warn.forEach(w => console.log('  ' + w));
 } else {
   warn.forEach(w => console.error('WARN ' + w));
+  punctLog.forEach(r => console.error('PUNC ' + r));
   console.log(JSON.stringify([unit], null, 2));
 }

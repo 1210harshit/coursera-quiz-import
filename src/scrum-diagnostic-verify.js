@@ -2,6 +2,16 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
+// THE PRE-COURSE DIAGNOSTIC CARRIES NO REFERENCE AT ALL. Asked for on 2026-10-08. The
+// diagnostic runs BEFORE any video has been watched, so pointing a learner at a module they
+// have not reached yet is noise rather than help. The graded and practice quizzes of this
+// course are untouched and keep the form they shipped with.
+//
+// This course predates <slug>-lib-refer.js, so the switch is declared in the builder AND the
+// verifier rather than in one shared file. They must be changed together; the verifier below
+// FAILS on a reference it does not expect, which is what actually catches a drift.
+const DIAGNOSTIC_REFERENCE = false;
+
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const OUT = process.argv[2];
 const mods = JSON.parse(fs.readFileSync(path.join(SP, 'scrum', 'diagnostic.json'), 'utf8'));
@@ -188,12 +198,14 @@ for (const mo of mods) {
         bad(`${tag} option ${o.letter} mismatch\n      got:  ${opts[oi]}\n      want: ${wantOpt}`);
 
       // required shape: ONE line — "Feedback: <explanation> (Refer to M1L1V1: ...)"
-      const wantFb = 'Feedback: ' + stripVerdict(src.feedback[o.letter]) + ' (' + wantRef + ')';
+      const wantFb = 'Feedback: ' + stripVerdict(src.feedback[o.letter])
+        + (DIAGNOSTIC_REFERENCE ? ' (' + wantRef + ')' : '');
       if (fbs[oi] !== wantFb) {
         bad(`${tag} feedback ${o.letter} mismatch\n      got:  ${JSON.stringify(fbs[oi])}\n      want: ${JSON.stringify(wantFb)}`);
       } else {
         if (fbs[oi].includes('\n'))
           bad(`${tag} feedback ${o.letter}: contains a line break — must be one line`);
+        if (DIAGNOSTIC_REFERENCE) {
         if (!fbs[oi].endsWith(' (' + wantRef + ')'))
           bad(`${tag} feedback ${o.letter}: bracketed reference not at end, separated by one space`);
         if (!/^Refer to Module \d+: \S/.test(wantRef))
@@ -208,6 +220,10 @@ for (const mo of mods) {
         // matched loosely. Require the wrapper, not the absence of nesting.
         if (!/\(Refer to Module \d+: .+\)$/.test(fbs[oi]))
           bad(`${tag} feedback ${o.letter}: reference is not wrapped in brackets at the end`);
+        } else if (/Refer to Module/.test(fbs[oi])) {
+          // The opposite failure is the one that matters now: a reference that should be gone.
+          bad(`${tag} feedback ${o.letter}: carries a reference, but the diagnostic must not`);
+        }
         // no leftover verdict word at the start of the explanation
         if (/^Feedback:\s*(Correct|Incorrect)\b/i.test(fbs[oi]))
           bad(`${tag} feedback ${o.letter}: verdict word still present -> "${fbs[oi].slice(0, 50)}"`);

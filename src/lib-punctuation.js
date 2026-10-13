@@ -10,10 +10,15 @@
 //   END-PROMPT    A prompt with no end punctuation gets "?" when its last sentence is a
 //                 question (opens with What / Which / How / Why / ...), "." otherwise.
 //   END-FEEDBACK  An explanation with no end punctuation gets ".".
-//   END-OPTION    An option gets "." only when OTHER options in the same question end with
+//   END-OPTION    An option gets "." when OTHER options in the same question end with
 //                 punctuation. Where all four are written without it ("Profile", "Knowledge
-//                 source", "Category = High; ...") that is the author's style for short answer
-//                 labels, not a missing mark, and is left alone.
+//                 source", "Category = High; ...") that reads as the author's style for short
+//                 answer labels rather than a missing mark, so BY DEFAULT it is left alone.
+//                 Pass {allOptions: true} to punctuate those sets too. The course owner asked
+//                 for that on resilience (2026-10-06), where the untouched sets were short noun
+//                 phrases ("Self-mastery and social support") they wanted ended with a stop. It
+//                 is per call rather than the new default so the courses already built and
+//                 delivered against the default keep the wording they shipped with.
 //   QUOTE-PAIR    A curly quote closed by a straight one (“text") is closed with the matching
 //                 curly mark (“text”), and the reverse.
 //   QUOTE-STRAY   A single straight quote at the very start or end of a field, with no other
@@ -46,7 +51,9 @@ function fixQuotes(t) {
   return { text: out, rule };
 }
 
-function punctuate(quizzes) {
+function punctuate(quizzes, opts = {}) {
+  // See END-OPTION above: also punctuate option sets that carry no end marks at all.
+  const allOptions = opts.allOptions === true;
   const log = [];
   for (const qz of quizzes) for (const q of qz.questions) {
     if (q.layout === 'REPLACED') continue;            // authored text, not the source's
@@ -83,7 +90,7 @@ function punctuate(quizzes) {
       let t = o.text;
       const qf = fixQuotes(t);
       if (qf.rule) { record('option:' + o.letter, t, qf.text, qf.rule); t = qf.text; }
-      if (mixed && !punctuated[i]) { record('option:' + o.letter, t, t + '.', 'END-OPTION'); t += '.'; }
+      if ((mixed || allOptions) && !punctuated[i]) { record('option:' + o.letter, t, t + '.', 'END-OPTION'); t += '.'; }
       o.text = t;
     });
 

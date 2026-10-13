@@ -16,6 +16,9 @@
 const fs = require('fs');
 const path = require('path');
 const { zipDir } = require('./lib-zipwriter');
+const { spellOut, attach, trailer, isPlain, wrap, REF_OWN_LINE, SEP }
+  = require('./emotional-intelligence-lib-refer.js');
+const JOIN_PROMPT = process.argv.includes('--join-prompt');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const TMPL = path.join(SP, 'tmpl');
@@ -50,13 +53,28 @@ function stripVerdict(fb) {
   return out;
 }
 
-// "M1L3V1" -> "Refer to Module 1 Lesson 3 Video: The Employer’s Duty to Provide a Safe Workplace"
+// "M1L1V2" -> "Refer to Module 1 Lesson 1 Video: The Fundamentals and Why the Three Words Differ"
+//
+// Module and lesson spell out in full words and the asset kind carries NO number. The title is
+// what identifies the item for the learner, so the ordinal is internal bookkeeping and never
+// reaches them. quiz.json and outline.json keep the compact M1L1V1 form and every mapping check
+// is still written against it — only this one learner-facing line expands.
+//
+// The label is the Coursera item type the learner sees. Every mapping in this course is a V
+// code, which is a video by construction, so every line here reads "Video:". A course with
+// questions written from a reading or a lab labels those "Reading:" / "Lab:" instead — see
+// deploying-ai-agents, which carries a REFERENCE_AS table for exactly that case.
+//
+// The paired verifier re-derives this string independently, so the two must change together —
+// one still expecting a numbered "Video 2:" would reject every document this builder produces.
+
+
 function referLine(mapped) {
   const v = VIDEOS[mapped];
   if (!v) throw new Error('No video in outline for mapping ' + mapped);
   // Format for this course: "Refer to M1L1V1: <video name>".
   // Video title passes through verbatim — no whitespace normalisation.
-  return `Refer to ${mapped}: ${v.video}`;
+  return `Refer to ${spellOut(mapped)}: ${v.video}`;
 }
 
 // ---------- OOXML helpers ----------
@@ -203,9 +221,11 @@ function buildBody(mo) {
     // kept, since those are layout rather than text styling.
     // This quiz stores the prompt as one string; the OSHA one stores an array of
     // paragraphs. Accept either so the same builder works for both courses.
-    const promptParas = (Array.isArray(q.prompt) ? q.prompt : [q.prompt])
-      .map((line, i) => (i === 0 ? line.replace(/^\s*Scenario\s*:\s*/i, '') : line))
-      .filter(t => t.trim());
+    // The source's paragraph structure reaches the learner — see emotional-intelligence-build.js for
+    // why, and --join-prompt to restore the single-line form on builder and verifier together.
+    const rawParas = (Array.isArray(q.prompt) ? q.prompt : [q.prompt])
+      .map((line, i) => (i === 0 ? line.replace(/^\s*Scenario\s*:\s*/i, '') : line));
+    const promptParas = (JOIN_PROMPT ? [rawParas.join(' ')] : rawParas).filter(t => t.trim());
 
     // A prompt line beginning "Word:" is read by the importer as an answer option — the
     // failure that rejected every scenario question on osha. The documented failure is a
@@ -229,6 +249,7 @@ function buildBody(mo) {
     });
     P.push(blank());
     const refer = referLine(q.mapped);
+    const STYLE_KEY = `practice:M${mo.num}L${mo.lesson}`;
     for (const o of q.options) {
       const star = o.letter === q.correct ? '*' : '';
       P.push(para([[`${star}${o.letter}: ${o.text}`]]));
@@ -238,8 +259,17 @@ function buildBody(mo) {
       // no line breaks at all, matching Coursera's own convention of putting the review
       // pointer inline in the feedback sentence.
       // Explanation passes through verbatim — spacing inside it is preserved exactly.
-      const fbText = 'Feedback: ' + stripVerdict(q.feedback[o.letter] || '') + ' (' + refer + ')';
-      P.push(para([[fbText]]));
+      // Explanation, then the reference as its OWN zero-spaced paragraph directly below it —
+      // nothing may sit between them. See emotional-intelligence-lib-refer.js for the probe that
+      // settled this encoding, and pass --no-br to both builder and verifier for one line.
+      const fbBody = 'Feedback: ' + stripVerdict(q.feedback[o.letter] || '');
+      const fbRef = wrap(refer, STYLE_KEY);
+      if (REF_OWN_LINE) {
+        P.push(para([[fbBody]]));
+        P.push(para([[fbRef]], { tight: true }));
+      } else {
+        P.push(para([[fbBody + ' ' + fbRef]]));
+      }
       P.push(blank());
     }
   }

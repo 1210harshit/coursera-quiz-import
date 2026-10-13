@@ -1,8 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { spellOut, attach, trailer, isPlain, wrap, REF_OWN_LINE, SEP }
+const { spellOut, attach, trailer, isPlain, wrap, REF_OWN_LINE, SEP, DIAGNOSTIC_REFERENCE }
   = require('./coaching-mentoring-lib-refer.js');
+const JOIN_PROMPT = process.argv.includes('--join-prompt');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const OUT = process.argv[2];
@@ -194,6 +195,23 @@ for (const mo of mods) {
     if (opts.length !== 4) bad(`${tag} has ${opts.length} options`);
     if (fbs.length !== 4) bad(`${tag} has ${fbs.length} feedback blocks`);
 
+    // Two options with the SAME text. Coursera refuses the question outright with
+    // "Duplicate answers are not allowed", and nothing else here would catch it: the counts,
+    // the key, the feedback blocks and the reference are all correct. Checked on the BUILT
+    // document, not only at parse time, so it cannot reach an upload.
+    {
+      const seenOpt = new Map();
+      opts.forEach(l => {
+      const t = l.replace(/^\*?[A-F]:\s*/, '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const letter = (/^\*?([A-F]):/.exec(l) || [, '?'])[1];
+      if (!t) return;
+      if (seenOpt.has(t)) {
+        bad(`${tag} options ${seenOpt.get(t)} and ${letter} have identical text — Coursera `
+        + 'rejects the question ("Duplicate answers are not allowed")');
+      } else seenOpt.set(t, letter);
+      });
+    }
+
     const starred = opts.filter(l => l.startsWith('*'));
     if (starred.length !== 1) bad(`${tag} has ${starred.length} starred answers`);
     else if (starred[0][1] !== src.correct)
@@ -205,13 +223,17 @@ for (const mo of mods) {
         bad(`${tag} option ${o.letter} mismatch\n      got:  ${opts[oi]}\n      want: ${wantOpt}`);
 
       // required shape: ONE line — "Feedback: <explanation> (Refer to M1L1V1: ...)"
-      const wantFb = 'Feedback: ' + attach(stripVerdict(src.feedback[o.letter]), wantRef, STYLE_KEY);
+      const wantFb = DIAGNOSTIC_REFERENCE
+        ? 'Feedback: ' + attach(stripVerdict(src.feedback[o.letter]), wantRef, STYLE_KEY)
+        : 'Feedback: ' + stripVerdict(src.feedback[o.letter]);
       if (fbs[oi] !== wantFb) {
         bad(`${tag} feedback ${o.letter} mismatch\n      got:  ${JSON.stringify(fbs[oi])}\n      want: ${JSON.stringify(wantFb)}`);
       } else {
         const breaks = (fbs[oi].match(/\n/g) || []).length;
-        if (breaks !== (REF_OWN_LINE ? 1 : 0))
-          bad(`${tag} feedback ${o.letter}: ${breaks} line break(s), expected ${REF_OWN_LINE ? 1 : 0}`);
+        const wantBreaks = DIAGNOSTIC_REFERENCE && REF_OWN_LINE ? 1 : 0;
+        if (breaks !== wantBreaks)
+          bad(`${tag} feedback ${o.letter}: ${breaks} line break(s), expected ${wantBreaks}`);
+        if (DIAGNOSTIC_REFERENCE) {
         if (!fbs[oi].endsWith(trailer(wantRef, STYLE_KEY)))
           bad(`${tag} feedback ${o.letter}: reference not at the end, separated by `
             + `${REF_OWN_LINE ? 'its own paragraph' : 'one space'}`);
@@ -231,6 +253,10 @@ for (const mo of mods) {
         } else if (!/\(Refer to Module \d+: .+\)$/.test(fbs[oi])) {
           bad(`${tag} feedback ${o.letter}: reference is not wrapped in brackets at the end`);
         }
+        } else if (/Refer to Module/.test(fbs[oi])) {
+          // The opposite failure is the one that matters now: a reference that should be gone.
+          bad(`${tag} feedback ${o.letter}: carries a reference, but the diagnostic must not`);
+        }
         // no leftover verdict word at the start of the explanation
         if (/^Feedback:\s*(Correct|Incorrect)\b/i.test(fbs[oi]))
           bad(`${tag} feedback ${o.letter}: verdict word still present -> "${fbs[oi].slice(0, 50)}"`);
@@ -245,12 +271,13 @@ for (const mo of mods) {
     // Prompt keeps the source's paragraph split; only the "Scenario:" label is dropped.
     const firstOpt = blk.findIndex(l => /^\*?[A-D]:\s/.test(l));
     const gotPrompt = blk.slice(1, firstOpt).map(p => p.replace(/\s+/g, ' ').trim());
-    // One paragraph, joined with a space — mirrors coaching-mentoring-diagnostic-build.js, which must
-    // emit a single prompt line or the whole document fails to import. See the note there.
-    const wantParas = [(Array.isArray(src.prompt) ? src.prompt : [src.prompt])
+    // The source's paragraphs are kept, so the expected prompt is the source's own split.
+    // A run with --join-prompt collapses them, and is checked against the joined form instead
+    // — the flag must be passed to builder and verifier together, as with --no-br.
+    const srcParas = (Array.isArray(src.prompt) ? src.prompt : [src.prompt])
       .map(l => String(l).replace(/\s+/g, ' ').trim())
-      .filter(Boolean)
-      .join(' ')].filter(Boolean);
+      .filter(Boolean);
+    const wantParas = (JOIN_PROMPT ? [srcParas.join(' ')] : srcParas).filter(Boolean);
     if (gotPrompt.length !== wantParas.length)
       bad(`${tag} prompt has ${gotPrompt.length} paragraphs, source has ${wantParas.length}`);
     if (gotPrompt.some(p => p.includes('\n')))
@@ -290,9 +317,10 @@ for (const mo of mods) {
       : /^\*?[A-D]:\s/.test(l) ? 'O'
       : /^Feedback:\s/.test(l) ? 'F'
       : 'P');
-    // Always 1: the builder joins every prompt into a single paragraph. A shape of HPP… is the
-    // defect that made Coursera report no importable questions at all.
-    const nPromptParas = 1;
+    // Taken from the source, because the prompt keeps its paragraphs. Under --join-prompt this
+    // collapses to 1 and the shape becomes HP… again. An unexpected extra P is still a defect:
+    // it means a line the importer will not recognise has reached the question.
+    const nPromptParas = wantParas.length;
     const wantShape = 'H' + 'P'.repeat(nPromptParas) + 'OF'.repeat(src.options.length);
     if (shape.join('') !== wantShape)
       bad(`${tag} line grammar is ${shape.join('')}, expected ${wantShape}` +
@@ -305,7 +333,8 @@ for (const mo of mods) {
   if (!/will not be imported/.test(guide)) bad('reference disclaimer missing');
   if (lines.slice(0, s).some(l => /^Question \d+ - /.test(l))) bad('question found before start marker');
 
-  console.log(`   ${idx.length} questions | ${refCount} feedback blocks with reference line | ` +
+  console.log(`   ${idx.length} questions | ${refCount} feedback blocks`
+    + `${DIAGNOSTIC_REFERENCE ? ' with reference line' : ', no reference line (by design)'} | ` +
     `${wantSections.length} template sections in order | ${new Set(used).size} live hyperlinks | package OK`);
   fs.rmSync(ex, { recursive: true, force: true });
 }

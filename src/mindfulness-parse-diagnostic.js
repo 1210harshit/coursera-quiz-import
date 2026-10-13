@@ -1,8 +1,8 @@
 // Parser for the Everyday Mindfulness for a Calmer, More Focused Life PRE-COURSE DIAGNOSTIC — one quiz, ten questions.
 //
-// This is the outline's "Interactive Assessment" row, titled "Pre-Course Diagnostic: Conflict
-// Resolution Readiness Self-Assessment", and it is the one assessment that is neither graded
-// nor tied to a lesson. Its grammar is its own:
+// This is the outline's "Interactive Assessment" row — here "Pre-Course Diagnostic: Mindfulness
+// Readiness Self-Assessment", read from the document rather than hardcoded — and it is the one
+// assessment that is neither graded nor tied to a lesson. Its grammar is its own:
 //
 //   Q1 — Module 1                                          <- or "Q2 — Module 1 — Scenario-Based"
 //   Skill assessed: Recognizing that these behaviors are learned rather than inherited
@@ -69,9 +69,18 @@ const starts = [];
 L.forEach((l, i) => { if (Q_HEAD.test(l)) starts.push(i); });
 if (!starts.length) { console.error('no "Q<n> — Module <n>" headers found'); process.exit(1); }
 
+// Read the title from the document's own heading rather than a constant. A hardcoded title
+// has now survived a copy into the wrong course twice — it is the one field that names the
+// course and nothing downstream checks it, so it ships silently.
+const TITLE = /^Pre-Course Diagnostic\s*[:–—-]\s*\S.*$/i;
+const titleLine = L.find(l => TITLE.test(l));
+if (!titleLine)
+  warn.push('no "Pre-Course Diagnostic: <name>" heading found in the document, so the built '
+    + 'quiz falls back to the bare "Pre-Course Diagnostic". Check the first line of the source.');
+
 const unit = {
   num: 1,
-  title: 'Pre-Course Diagnostic: Mindfulness Readiness Self-Assessment',
+  title: titleLine || 'Pre-Course Diagnostic',
   questions: [],
 };
 
@@ -132,6 +141,24 @@ starts.forEach((start, k) => {
   // ---- checks --------------------------------------------------------------------------------
   const letters = q.options.map(o => o.letter).join('');
   if (letters !== 'ABCD') { warn.push(`${where}: options are "${letters}", expected ABCD — skipped`); return; }
+  // TWO OPTIONS WITH THE SAME TEXT. Coursera rejects the question outright — "Duplicate
+  // answers are not allowed" — and every other check here passes: four options, one key,
+  // four feedback blocks, a resolving reference. It cannot be repaired at this end, since
+  // distinct feedback under identical options means the distractors were never written and
+  // inventing them is authoring assessment content. The verifier checks the built document
+  // again, so a duplicate cannot reach an upload either way.
+  {
+    const seenOpt = new Map();
+    for (const o of q.options) {
+      const k = String(o.text).replace(/\s+/g, ' ').trim().toLowerCase();
+      if (!k) continue;
+      if (seenOpt.has(k)) {
+        warn.push(`${where}: options ${seenOpt.get(k)} and ${o.letter} have identical text — `
+          + 'Coursera rejects the question ("Duplicate answers are not allowed"); the source '
+          + 'needs distinct distractors before this can be built.');
+      } else seenOpt.set(k, o.letter);
+    }
+  }
   if (!q.correct) { warn.push(`${where}: no "Correct answer:" line — skipped`); return; }
   if (!q.correctExplFor) { warn.push(`${where}: no explanation labelled "Correct." — skipped`); return; }
   // The key is stated twice and neither statement derives from the other, so they are checked
@@ -153,7 +180,7 @@ starts.forEach((start, k) => {
 
 // --- coverage, against the diagnostic's own stated design ----------------------------------
 // The planned spread is READ FROM THE DOCUMENT, not hardcoded. Every course built to this
-// template states it in the Question Bank line, and the courses disagree: emotional-intelligence
+// template states it in the Question Bank line, and the courses disagree: mindfulness
 // and negotiating plan 2/2/3/3, this one plans 3/3/2/2. A constant copied from a sibling course
 // reports four false warnings on the next one, which is exactly what it did here before this
 // was read properly.

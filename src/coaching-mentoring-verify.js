@@ -3,6 +3,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { spellOut, attach, trailer, isPlain, wrap, REF_OWN_LINE, SEP }
   = require('./coaching-mentoring-lib-refer.js');
+const JOIN_PROMPT = process.argv.includes('--join-prompt');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const OUT = process.argv[2];
@@ -212,6 +213,23 @@ for (const mo of mods) {
     if (opts.length !== 4) bad(`${tag} has ${opts.length} options`);
     if (fbs.length !== 4) bad(`${tag} has ${fbs.length} feedback blocks`);
 
+    // Two options with the SAME text. Coursera refuses the question outright with
+    // "Duplicate answers are not allowed", and nothing else here would catch it: the counts,
+    // the key, the feedback blocks and the reference are all correct. Checked on the BUILT
+    // document, not only at parse time, so it cannot reach an upload.
+    {
+      const seenOpt = new Map();
+      opts.forEach(l => {
+      const t = l.replace(/^\*?[A-F]:\s*/, '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const letter = (/^\*?([A-F]):/.exec(l) || [, '?'])[1];
+      if (!t) return;
+      if (seenOpt.has(t)) {
+        bad(`${tag} options ${seenOpt.get(t)} and ${letter} have identical text — Coursera `
+        + 'rejects the question ("Duplicate answers are not allowed")');
+      } else seenOpt.set(t, letter);
+      });
+    }
+
     const starred = opts.filter(l => l.startsWith('*'));
     if (starred.length !== 1) bad(`${tag} has ${starred.length} starred answers`);
     else if (starred[0][1] !== src.correct)
@@ -266,8 +284,22 @@ for (const mo of mods) {
     // correct document. See the note there for the three uploads that settled the form.
     const firstOpt = blk.findIndex(l => /^\*?[A-D]:\s/.test(l));
     const gotPrompt = blk.slice(1, firstOpt).map(p => p.replace(/\s+/g, ' ').trim());
-    const wantParas = [(Array.isArray(src.prompt) ? src.prompt : [src.prompt])
-      .map(l => String(l).replace(/\s+/g, ' ').trim()).filter(Boolean).join(' ')]
+    // The source's paragraphs are kept; --join-prompt collapses them on both sides at once.
+    const srcParas = (Array.isArray(src.prompt) ? src.prompt : [src.prompt])
+      .map(l => String(l).replace(/\s+/g, ' ').trim()).filter(Boolean);
+    // A bare "Scenario:" is a LABEL for the paragraph it introduces, not a paragraph of its own
+    // — this source puts it on the question's header line, so the parse yields
+    // ["Scenario:", "<the scenario>"]. Fold it back in, so the prompt reads
+    // "Scenario — <text>" as one paragraph: that is the form five uploads settled, and the word
+    // is kept while its colon is not. A prompt whose paragraphs are genuinely separate still
+    // keeps its split, which is what convention 3 is about.
+    const labelled = [];
+    for (const t of srcParas) {
+      const i = labelled.length - 1;
+      if (i >= 0 && /^Scenario\s*:\s*$/i.test(labelled[i])) labelled[i] += ' ' + t;
+      else labelled.push(t);
+    }
+    const wantParas = (JOIN_PROMPT ? [labelled.join(' ')] : labelled)
       .map(t => t.replace(/^Scenario\s*:\s*/i, 'Scenario — '))
       .filter(Boolean);
     if (gotPrompt.length !== wantParas.length)
@@ -314,14 +346,15 @@ for (const mo of mods) {
       : /^\*?[A-D]:\s/.test(l) ? 'O'
       : /^Feedback:\s/.test(l) ? 'F'
       : 'P');
-    // Always 1: the builder joins every prompt to a single paragraph. A shape of HPP… is an
-    // unmatched line and breaks the parse for the whole document.
-    const nPromptParas = 1;
+    // Taken from the source, because the prompt keeps its paragraphs. Under --join-prompt this
+    // collapses to 1 and the shape becomes HP… again. An unexpected extra P is still a defect:
+    // it means a line the importer will not recognise has reached the question.
+    const nPromptParas = wantParas.length;
     const wantShape = 'H' + 'P'.repeat(nPromptParas) + 'OF'.repeat(src.options.length);
     if (shape.join('') !== wantShape)
       bad(`${tag} line grammar is ${shape.join('')}, expected ${wantShape}` +
           `\n      offending lines: ${JSON.stringify(blk.filter((l, i) =>
-            shape[i] === 'P' && i !== 1).map(l => l.slice(0, 60)))}`);
+            shape[i] === 'P' && i > nPromptParas).map(l => l.slice(0, 60)))}`);
   });
 
   const guide = lines.slice(e).join('\n');

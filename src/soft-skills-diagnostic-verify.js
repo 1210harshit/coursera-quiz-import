@@ -1,6 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { spellOut, attach, trailer, isPlain, wrap, REF_OWN_LINE, SEP, DIAGNOSTIC_REFERENCE }
+  = require('./soft-skills-lib-refer.js');
+const JOIN_PROMPT = process.argv.includes('--join-prompt');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const OUT = process.argv[2];
@@ -128,9 +131,23 @@ for (const mo of mods) {
     if (/importable content starts here|end of importable content/i.test(l))
       bad(`prose collides with a marker string at line ${i}: "${l.slice(0, 70)}"`);
   });
-  const secPairs = lines.slice(s + 1, e)
-    .map((l, i) => ({ l, x: xmls[s + 1 + i] }))
-    .filter(p => p.l);
+  // The reference is its own zero-spaced paragraph sitting IMMEDIATELY after its Feedback:
+  // paragraph — nothing between, which the importer would read as the end of the feedback.
+  // Fold each such pair back into one logical line joined by SEP, so every per-option check
+  // below reads one feedback line whichever form the document is in. A reference paragraph
+  // anywhere else is left unfolded, and the checks below then reject it.
+  const rawPairs = lines.slice(s + 1, e).map((l, i) => ({ l, x: xmls[s + 1 + i] }));
+  const folded = [];
+  rawPairs.forEach(p => {
+    const prev = folded[folded.length - 1];
+    if (REF_OWN_LINE && /^Refer to Module /.test(p.l) && prev && /^Feedback: /.test(prev.l)) {
+      if (!/w:after="0"/.test(p.x))
+        bad(`reference paragraph is not zero-spaced: "${p.l.slice(0, 60)}"`);
+      prev.l += SEP + p.l;
+      prev.x += p.x;
+    } else folded.push({ ...p });
+  });
+  const secPairs = folded.filter(p => p.l);
   const sec = secPairs.map(p => p.l);
 
   // Nothing inside the importable region may carry an intra-paragraph line break:
@@ -168,6 +185,7 @@ for (const mo of mods) {
     const src = mo.questions[k];
     const tag = `Q${src.num}`;
     const wantRef = referLine(src.module);
+    const STYLE_KEY = `diagnostic`;
 
     if (blk[0] !== `Question ${src.num} - multiple choice, shuffle`)
       bad(`${tag} header wrong: "${blk[0]}"`);
@@ -176,6 +194,23 @@ for (const mo of mods) {
     const fbs = blk.filter(l => /^Feedback:\s/.test(l));
     if (opts.length !== 4) bad(`${tag} has ${opts.length} options`);
     if (fbs.length !== 4) bad(`${tag} has ${fbs.length} feedback blocks`);
+
+    // Two options with the SAME text. Coursera refuses the question outright with
+    // "Duplicate answers are not allowed", and nothing else here would catch it: the counts,
+    // the key, the feedback blocks and the reference are all correct. Checked on the BUILT
+    // document, not only at parse time, so it cannot reach an upload.
+    {
+      const seenOpt = new Map();
+      opts.forEach(l => {
+      const t = l.replace(/^\*?[A-F]:\s*/, '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const letter = (/^\*?([A-F]):/.exec(l) || [, '?'])[1];
+      if (!t) return;
+      if (seenOpt.has(t)) {
+        bad(`${tag} options ${seenOpt.get(t)} and ${letter} have identical text — Coursera `
+        + 'rejects the question ("Duplicate answers are not allowed")');
+      } else seenOpt.set(t, letter);
+      });
+    }
 
     const starred = opts.filter(l => l.startsWith('*'));
     if (starred.length !== 1) bad(`${tag} has ${starred.length} starred answers`);
@@ -188,14 +223,20 @@ for (const mo of mods) {
         bad(`${tag} option ${o.letter} mismatch\n      got:  ${opts[oi]}\n      want: ${wantOpt}`);
 
       // required shape: ONE line — "Feedback: <explanation> (Refer to M1L1V1: ...)"
-      const wantFb = 'Feedback: ' + stripVerdict(src.feedback[o.letter]) + ' (' + wantRef + ')';
+      const wantFb = DIAGNOSTIC_REFERENCE
+        ? 'Feedback: ' + attach(stripVerdict(src.feedback[o.letter]), wantRef, STYLE_KEY)
+        : 'Feedback: ' + stripVerdict(src.feedback[o.letter]);
       if (fbs[oi] !== wantFb) {
         bad(`${tag} feedback ${o.letter} mismatch\n      got:  ${JSON.stringify(fbs[oi])}\n      want: ${JSON.stringify(wantFb)}`);
       } else {
-        if (fbs[oi].includes('\n'))
-          bad(`${tag} feedback ${o.letter}: contains a line break — must be one line`);
-        if (!fbs[oi].endsWith(' (' + wantRef + ')'))
-          bad(`${tag} feedback ${o.letter}: bracketed reference not at end, separated by one space`);
+        const breaks = (fbs[oi].match(/\n/g) || []).length;
+        const wantBreaks = DIAGNOSTIC_REFERENCE && REF_OWN_LINE ? 1 : 0;
+        if (breaks !== wantBreaks)
+          bad(`${tag} feedback ${o.letter}: ${breaks} line break(s), expected ${wantBreaks}`);
+        if (DIAGNOSTIC_REFERENCE) {
+        if (!fbs[oi].endsWith(trailer(wantRef, STYLE_KEY)))
+          bad(`${tag} feedback ${o.letter}: reference not at the end, separated by `
+            + `${REF_OWN_LINE ? 'its own paragraph' : 'one space'}`);
         if (!/^Refer to Module \d+: \S/.test(wantRef))
           bad(`${tag} feedback ${o.letter}: bad reference line "${wantRef}"`);
         // brackets must be balanced and the reference fully enclosed
@@ -203,11 +244,19 @@ for (const mo of mods) {
         const closes = (fbs[oi].match(/\)/g) || []).length;
         if (opens !== closes)
           bad(`${tag} feedback ${o.letter}: unbalanced brackets (${opens} open, ${closes} close)`);
-        // A module title may itself contain brackets or a colon ("Putting Soft Skills to Work:
-        // Ethic, Leadership, and Career"), so the wrapper may legitimately nest and the title is
+        // A module title may itself contain brackets or a colon ("The Essentials: Awareness,
+        // Management, Empathy, and Influence"), so the wrapper may legitimately nest and the title is
         // matched loosely. Require the wrapper, not the absence of nesting.
-        if (!/\(Refer to Module \d+: .+\)$/.test(fbs[oi]))
+        if (isPlain(STYLE_KEY)) {
+          if (/\(Refer to /.test(fbs[oi]))
+            bad(`${tag} feedback ${o.letter}: reference is bracketed, but this course is plain`);
+        } else if (!/\(Refer to Module \d+: .+\)$/.test(fbs[oi])) {
           bad(`${tag} feedback ${o.letter}: reference is not wrapped in brackets at the end`);
+        }
+        } else if (/Refer to Module/.test(fbs[oi])) {
+          // The opposite failure is the one that matters now: a reference that should be gone.
+          bad(`${tag} feedback ${o.letter}: carries a reference, but the diagnostic must not`);
+        }
         // no leftover verdict word at the start of the explanation
         if (/^Feedback:\s*(Correct|Incorrect)\b/i.test(fbs[oi]))
           bad(`${tag} feedback ${o.letter}: verdict word still present -> "${fbs[oi].slice(0, 50)}"`);
@@ -222,12 +271,13 @@ for (const mo of mods) {
     // Prompt keeps the source's paragraph split; only the "Scenario:" label is dropped.
     const firstOpt = blk.findIndex(l => /^\*?[A-D]:\s/.test(l));
     const gotPrompt = blk.slice(1, firstOpt).map(p => p.replace(/\s+/g, ' ').trim());
-    // One paragraph, joined with a space — mirrors soft-skills-diagnostic-build.js, which must
-    // emit a single prompt line or the whole document fails to import. See the note there.
-    const wantParas = [(Array.isArray(src.prompt) ? src.prompt : [src.prompt])
+    // The source's paragraphs are kept, so the expected prompt is the source's own split.
+    // A run with --join-prompt collapses them, and is checked against the joined form instead
+    // — the flag must be passed to builder and verifier together, as with --no-br.
+    const srcParas = (Array.isArray(src.prompt) ? src.prompt : [src.prompt])
       .map(l => String(l).replace(/\s+/g, ' ').trim())
-      .filter(Boolean)
-      .join(' ')].filter(Boolean);
+      .filter(Boolean);
+    const wantParas = (JOIN_PROMPT ? [srcParas.join(' ')] : srcParas).filter(Boolean);
     if (gotPrompt.length !== wantParas.length)
       bad(`${tag} prompt has ${gotPrompt.length} paragraphs, source has ${wantParas.length}`);
     if (gotPrompt.some(p => p.includes('\n')))
@@ -267,9 +317,10 @@ for (const mo of mods) {
       : /^\*?[A-D]:\s/.test(l) ? 'O'
       : /^Feedback:\s/.test(l) ? 'F'
       : 'P');
-    // Always 1: the builder joins every prompt into a single paragraph. A shape of HPP… is the
-    // defect that made Coursera report no importable questions at all.
-    const nPromptParas = 1;
+    // Taken from the source, because the prompt keeps its paragraphs. Under --join-prompt this
+    // collapses to 1 and the shape becomes HP… again. An unexpected extra P is still a defect:
+    // it means a line the importer will not recognise has reached the question.
+    const nPromptParas = wantParas.length;
     const wantShape = 'H' + 'P'.repeat(nPromptParas) + 'OF'.repeat(src.options.length);
     if (shape.join('') !== wantShape)
       bad(`${tag} line grammar is ${shape.join('')}, expected ${wantShape}` +
@@ -282,7 +333,8 @@ for (const mo of mods) {
   if (!/will not be imported/.test(guide)) bad('reference disclaimer missing');
   if (lines.slice(0, s).some(l => /^Question \d+ - /.test(l))) bad('question found before start marker');
 
-  console.log(`   ${idx.length} questions | ${refCount} feedback blocks with reference line | ` +
+  console.log(`   ${idx.length} questions | ${refCount} feedback blocks`
+    + `${DIAGNOSTIC_REFERENCE ? ' with reference line' : ', no reference line (by design)'} | ` +
     `${wantSections.length} template sections in order | ${new Set(used).size} live hyperlinks | package OK`);
   fs.rmSync(ex, { recursive: true, force: true });
 }

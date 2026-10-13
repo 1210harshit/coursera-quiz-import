@@ -1,8 +1,8 @@
-// Parser for the Critical Thinking Skills PRE-COURSE DIAGNOSTIC — one quiz, ten questions.
+// Parser for the Critical Thinking Skills: Reason Clearly, Argue Persuasively, and Decide Wisely PRE-COURSE DIAGNOSTIC — one quiz, ten questions.
 //
-// This is the outline's "Interactive Assessment" row, titled "Pre-Course Diagnostic: Emotional
-// Intelligence Readiness Self-Assessment", and it is the one assessment that is neither graded
-// nor tied to a lesson. Its grammar is its own:
+// This is the outline's "Interactive Assessment" row — here "Pre-Course Diagnostic: Critical Thinking
+// Readiness Self-Assessment", read from the document rather than hardcoded — and it is the one
+// assessment that is neither graded nor tied to a lesson. Its grammar is its own:
 //
 //   Q1 — Module 1                                          <- or "Q2 — Module 1 — Scenario-Based"
 //   Skill assessed: Recognizing that these behaviors are learned rather than inherited
@@ -26,13 +26,14 @@
 //   * the document opens with a page of design notes before "Question Bank". Nothing before the
 //     first "Q<n> — Module <n>" header is content, so the parse starts there.
 //
-// The five scenario-based questions write the scenario and the question as two lines separated
-// by a <w:br/>; lib-lines splits on it, so both arrive as separate prompt paragraphs and the
-// builder keeps the split. No prompt opens with a one-word label, so nothing here meets the
-// `word:`-as-answer-option failure the graded quizzes have to avoid.
+// The five scenario-based questions write the scenario and the question as two separate
+// PARAGRAPHS — this document carries no <w:br/> at all — so both arrive as separate prompt lines
+// and the builder keeps the split. No prompt opens with a one-word label, so nothing here meets
+// the `word:`-as-answer-option failure the graded quizzes have to avoid.
 const fs = require('fs');
 const path = require('path');
 const { lines } = require('./lib-lines');
+const { punctuate } = require('./lib-punctuation');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const SLUG = 'critical-thinking';
@@ -69,9 +70,18 @@ const starts = [];
 L.forEach((l, i) => { if (Q_HEAD.test(l)) starts.push(i); });
 if (!starts.length) { console.error('no "Q<n> — Module <n>" headers found'); process.exit(1); }
 
+// Read the title from the document's own heading rather than a constant. A hardcoded title
+// has now survived a copy into the wrong course twice — it is the one field that names the
+// course and nothing downstream checks it, so it ships silently.
+const TITLE = /^Pre-Course Diagnostic\s*[:–—-]\s*\S.*$/i;
+const titleLine = L.find(l => TITLE.test(l));
+if (!titleLine)
+  warn.push('no "Pre-Course Diagnostic: <name>" heading found in the document, so the built '
+    + 'quiz falls back to the bare "Pre-Course Diagnostic". Check the first line of the source.');
+
 const unit = {
   num: 1,
-  title: 'Pre-Course Diagnostic: Reasoning Self-Assessment',
+  title: titleLine || 'Pre-Course Diagnostic',
   questions: [],
 };
 
@@ -132,6 +142,24 @@ starts.forEach((start, k) => {
   // ---- checks --------------------------------------------------------------------------------
   const letters = q.options.map(o => o.letter).join('');
   if (letters !== 'ABCD') { warn.push(`${where}: options are "${letters}", expected ABCD — skipped`); return; }
+  // TWO OPTIONS WITH THE SAME TEXT. Coursera rejects the question outright — "Duplicate
+  // answers are not allowed" — and every other check here passes: four options, one key,
+  // four feedback blocks, a resolving reference. It cannot be repaired at this end, since
+  // distinct feedback under identical options means the distractors were never written and
+  // inventing them is authoring assessment content. The verifier checks the built document
+  // again, so a duplicate cannot reach an upload either way.
+  {
+    const seenOpt = new Map();
+    for (const o of q.options) {
+      const k = String(o.text).replace(/\s+/g, ' ').trim().toLowerCase();
+      if (!k) continue;
+      if (seenOpt.has(k)) {
+        warn.push(`${where}: options ${seenOpt.get(k)} and ${o.letter} have identical text — `
+          + 'Coursera rejects the question ("Duplicate answers are not allowed"); the source '
+          + 'needs distinct distractors before this can be built.');
+      } else seenOpt.set(k, o.letter);
+    }
+  }
   if (!q.correct) { warn.push(`${where}: no "Correct answer:" line — skipped`); return; }
   if (!q.correctExplFor) { warn.push(`${where}: no explanation labelled "Correct." — skipped`); return; }
   // The key is stated twice and neither statement derives from the other, so they are checked
@@ -152,9 +180,33 @@ starts.forEach((start, k) => {
 });
 
 // --- coverage, against the diagnostic's own stated design ----------------------------------
-// "two questions each for Modules 1 and 2 and three questions each for Modules 3 and 4, for a
-// total of ten questions. Each module includes at least one scenario-based question."
-const PLANNED = { 1: 2, 2: 2, 3: 3, 4: 3 };
+// The planned spread is READ FROM THE DOCUMENT, not hardcoded. Every course built to this
+// template states it in the Question Bank line, and the courses disagree: critical-thinking
+// and critical-thinking plan 2/2/3/3, this one plans 3/3/2/2. A constant copied from a sibling course
+// reports four false warnings on the next one, which is exactly what it did here before this
+// was read properly.
+//
+//   "Ten items: three questions from Module 1, three questions from Module 2, two questions
+//    from Module 3, two questions from Module 4."
+//
+// The fallback is the even split the template's own prose describes when no per-module count is
+// stated, and whichever source supplied the numbers is named in the report.
+const WORDN = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+const PLANNED = {};
+let plannedFrom = 'default (even split)';
+{
+  const bank = L.find(l => /questions?\s+from\s+Module\s+\d/i.test(l)) || '';
+  for (const m of bank.matchAll(/\b(\w+)\s+questions?\s+from\s+Module\s+(\d+)/gi)) {
+    const n = WORDN[m[1].toLowerCase()] || +m[1];
+    if (n) { PLANNED[+m[2]] = n; plannedFrom = 'the document\'s Question Bank line'; }
+  }
+  for (const m of bank.matchAll(/\b(\w+)\s+questions?\s+(?:for|in)\s+each\s+of\s+the\s+(\w+)\s+modules/gi)) {
+    const n = WORDN[m[1].toLowerCase()] || +m[1];
+    const mods = WORDN[m[2].toLowerCase()] || +m[2];
+    if (n && mods) { for (let i = 1; i <= mods; i++) PLANNED[i] = n; plannedFrom = 'the document\'s Question Bank line'; }
+  }
+  if (!Object.keys(PLANNED).length) Object.assign(PLANNED, { 1: 2, 2: 2, 3: 3, 4: 3 });
+}
 const byModule = {};
 for (const q of unit.questions) byModule[q.module] = (byModule[q.module] || 0) + 1;
 for (const [m, n] of Object.entries(PLANNED)) {
@@ -170,6 +222,17 @@ for (const m of Object.keys(PLANNED)) {
 if (unit.questions.length !== 10) {
   warn.push(`${unit.questions.length} questions parsed, but the design note plans ten`);
 }
+
+// PUNCTUATION. Missing end marks and broken quote pairs are repaired before anything is built
+// — see lib-punctuation.js for the rules, including why an option set written WITHOUT end marks
+// throughout is left alone rather than "fixed" into the author's own style. Every change is
+// recorded on the question as q.punct, with the source wording kept in q.original, so a
+// punctuation fix can never quietly stand in for a real mismatch.
+//
+// The log labels each change by document, so each unit carries a `file` for the call only.
+unit.file = 'Diagnostic';
+const punctLog = punctuate([unit], { allOptions: true });
+delete unit.file;
 
 if (process.argv.includes('--report')) {
   const key = {};
@@ -189,9 +252,12 @@ if (process.argv.includes('--report')) {
   console.log(`module spread:     ${Object.keys(PLANNED).map(m => `M${m}:${byModule[m] || 0}`).join(' ')}`);
   console.log(`answer key spread: ${LET.map(l => `${l}:${key[l] || 0}`).join(' ')}`);
   console.log(`longest line:      ${longest} characters`);
+  console.log(`\npunctuation added or corrected: ${punctLog.length}`);
+  punctLog.forEach(r => console.log('  ' + r));
   console.log(`\nwarnings: ${warn.length}`);
   warn.forEach(w => console.log('  ' + w));
 } else {
   warn.forEach(w => console.error('WARN ' + w));
+  punctLog.forEach(r => console.error('PUNC ' + r));
   console.log(JSON.stringify([unit], null, 2));
 }

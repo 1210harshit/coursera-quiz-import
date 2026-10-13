@@ -1,4 +1,4 @@
-// Parser for the Critical Thinking Skills graded assessments (one file per module).
+// Parser for the Critical Thinking Skills: Reason Clearly, Argue Persuasively, and Decide Wisely graded assessments (one file per module).
 //
 // Four source documents, m1..m4, in the one-file-per-module arrangement cstp-course-1 uses.
 // Within a file the grammar is ai-products' family, and it is the same in all four:
@@ -41,6 +41,7 @@
 const fs = require('fs');
 const path = require('path');
 const { lines } = require('./lib-lines');
+const { punctuate } = require('./lib-punctuation');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const SLUG = 'critical-thinking';
@@ -85,6 +86,21 @@ const SCENARIO = /^Scenario\s*:\s*$/i;
 const OPTION  = /^([A-D])\.\s+(.+)$/;
 const KEY     = /^\s*(?:✅\s*)?Correct Answer\s*:\s*([A-D])\b/i;
 const MAPPED  = /^Mapped to\s*:\s*(M\d+L\d+V\d+)\b/i;
+// TWO explanation layouts exist across these courses, and this course's GRADED quizzes use the
+// one the other courses reserve for their practice quizzes:
+//
+//   full label     Explanation for Option B (Correct):    <- this course, every option labelled
+//                  Explanation for Option A:                 in full, "(Correct)" optional
+//
+//   shared header  Explanation for Option B (Correct):    <- soft-skills, critical-thinking
+//                  Explanation for Other Options:            and the rest of the graded family
+//                  A: …
+//
+// EXPL_ANY covers the full-label form for every letter; EXPL_C is the subset of it that carries
+// the "(Correct)" marker. Both are kept because a later revision of this source is free to
+// switch, and because the two forms can legitimately appear in one document — the correct
+// option's label is identical in each.
+const EXPL_ANY = /^Explanation for Option\s+([A-D])\s*(?:\((Correct|Incorrect)\))?\s*:\s*(.*)$/i;
 const EXPL_C  = /^Explanation for Option\s+([A-D])\s*\(Correct\)\s*:\s*(.*)$/i;
 const EXPL_O  = /^Explanation for Other Options\s*:\s*$/i;
 const EXPL_I  = /^([A-D])\s*:\s+(.+)$/;
@@ -144,7 +160,7 @@ for (const n of MODULES) {
     if (!q.prompt.length) { warn.push(`${where}: no prompt — question skipped`); return; }
 
     // ---- options, key, mapping, explanations --------------------------------------------
-    let mode = null, pendingLetter = null;
+    let mode = null, pendingLetter = null, lastExplLetter = null;
     for (; i < blk.length; i++) {
       const l = blk[i];
       let m;
@@ -155,25 +171,30 @@ for (const n of MODULES) {
       }
       if ((m = l.match(KEY)))    { q.correct = m[1].toUpperCase(); mode = null; continue; }
       if ((m = l.match(MAPPED))) { q.mapped = m[1].toUpperCase();  mode = null; continue; }
-      if ((m = l.match(EXPL_C))) {
-        q.correctExplFor = m[1].toUpperCase();
-        pendingLetter = q.correctExplFor;
-        // Module 1 puts the text on the same line as the label; modules 2-4 on the next.
-        if (m[2] && m[2].trim()) { q.feedback[pendingLetter] = m[2].trim(); pendingLetter = null; }
-        mode = 'correct';
+      // One labelled block per option, correct or not. The label may carry its text on the same
+      // line or leave it to the next, so the letter is held in pendingLetter either way.
+      if ((m = l.match(EXPL_ANY))) {
+        const L = m[1].toUpperCase();
+        if (m[2] && /^correct$/i.test(m[2])) q.correctExplFor = q.correctExplFor || L;
+        pendingLetter = L;
+        if (m[3] && m[3].trim()) { q.feedback[L] = m[3].trim(); pendingLetter = null; }
+        mode = 'expl';
+        lastExplLetter = L;
         continue;
       }
       if (EXPL_O.test(l)) { mode = 'other'; pendingLetter = null; continue; }
       if (mode === 'other' && (m = l.match(EXPL_I))) {
         q.feedback[m[1].toUpperCase()] = m[2];
+        lastExplLetter = m[1].toUpperCase();
         continue;
       }
-      if (mode === 'correct' && pendingLetter) { q.feedback[pendingLetter] = l; pendingLetter = null; continue; }
-      // A continuation line of whichever explanation is open.
-      if (mode && Object.keys(q.feedback).length) {
-        const last = mode === 'correct' ? q.correctExplFor
-          : Object.keys(q.feedback).filter(x => x !== q.correctExplFor).pop();
-        if (last && q.feedback[last]) { q.feedback[last] += '\n' + l; continue; }
+      if (pendingLetter) { q.feedback[pendingLetter] = l; pendingLetter = null; continue; }
+      // A continuation line of whichever explanation is open. With one labelled block per
+      // option that is simply the last letter seen, so it no longer has to be inferred from
+      // which keys exist — an inference that broke as soon as every option carried its own label.
+      if (mode && lastExplLetter && q.feedback[lastExplLetter]) {
+        q.feedback[lastExplLetter] += '\n' + l;
+        continue;
       }
       warn.push(`${where}: unmatched line "${l.slice(0, 60)}"`);
     }
@@ -181,6 +202,24 @@ for (const n of MODULES) {
     // ---- checks --------------------------------------------------------------------------
     const letters = q.options.map(o => o.letter).join('');
     if (letters !== 'ABCD') { warn.push(`${where}: options are "${letters}", expected ABCD — skipped`); return; }
+    // TWO OPTIONS WITH THE SAME TEXT. Coursera rejects the question outright — "Duplicate
+    // answers are not allowed" — and every other check here passes: four options, one key,
+    // four feedback blocks, a resolving reference. It cannot be repaired at this end, since
+    // distinct feedback under identical options means the distractors were never written and
+    // inventing them is authoring assessment content. The verifier checks the built document
+    // again, so a duplicate cannot reach an upload either way.
+    {
+      const seenOpt = new Map();
+      for (const o of q.options) {
+        const k = String(o.text).replace(/\s+/g, ' ').trim().toLowerCase();
+        if (!k) continue;
+        if (seenOpt.has(k)) {
+          warn.push(`${where}: options ${seenOpt.get(k)} and ${o.letter} have identical text — `
+            + 'Coursera rejects the question ("Duplicate answers are not allowed"); the source '
+            + 'needs distinct distractors before this can be built.');
+        } else seenOpt.set(k, o.letter);
+      }
+    }
     if (!q.correct) { warn.push(`${where}: no "Correct Answer:" line — skipped`); return; }
     if (!q.correctExplFor) { warn.push(`${where}: no "(Correct)" explanation label — skipped`); return; }
     // The two independent statements of the key. See the header comment.
@@ -206,6 +245,34 @@ for (const n of MODULES) {
   });
 }
 
+// --- is this file even the module's assessment? -----------------------------------------
+// A per-module file whose questions MOSTLY map outside that module is not module N's quiz with a
+// few stray references; it is the wrong document. That is not a mapping to repair and it must not
+// be built — a graded quiz shipped with another module's questions is worse than a missing one.
+//
+// This has already fired once, on ANOTHER course built to this same template:
+// communication-skills was supplied a GradedAssessment_M1.docx that was a near-copy of its own
+// practice quiz — 16 questions rather than 10, carrying the practice document's
+// "Module N, Lesson N:" headings, one question per video across all four modules, and 148 of its
+// 218 lines identical to CommunicationSkills_PracticeQuiz.docx. Only 4 of its 16 questions
+// belonged to module 1. The check is kept in every course built from that family because the
+// mistake is one a person makes while assembling the sources, not one a parser can foresee.
+// This course's four files are clean: 10 questions each, every mapping inside its own module.
+const dropped = [];
+for (let i = modules.length - 1; i >= 0; i--) {
+  const mo = modules[i];
+  if (!mo.questions.length) continue;
+  const outside = mo.questions.filter(q => VIDEOS[q.mapped] && VIDEOS[q.mapped].module !== mo.num);
+  if (outside.length * 2 <= mo.questions.length) continue;
+  const elsewhere = [...new Set(outside.map(q => 'M' + VIDEOS[q.mapped].module))].sort();
+  warn.push(`M${mo.num}: DROPPED — ${outside.length} of its ${mo.questions.length} questions map to `
+    + `${elsewhere.join(', ')} rather than module ${mo.num}. A file whose questions mostly belong to `
+    + 'other modules is the wrong document, not a mapping to repair, so no quiz is built for this '
+    + 'module. Supply the correct source and re-run.');
+  dropped.push(mo.num);
+  modules.splice(i, 1);
+}
+
 // --- video coverage, against the outline's own claim ------------------------------------
 // Every module's Graded Assessment row describes "a ten-question graded quiz drawing on every
 // video in the module". Where that is not true the gap is named, because it is an editorial
@@ -221,6 +288,17 @@ for (const mo of modules) {
       + 'assessment as "drawing on every video in the module"');
   }
 }
+
+// PUNCTUATION. Missing end marks and broken quote pairs are repaired before anything is built
+// — see lib-punctuation.js for the rules, including why an option set written WITHOUT end marks
+// throughout is left alone rather than "fixed" into the author's own style. Every change is
+// recorded on the question as q.punct, with the source wording kept in q.original, so a
+// punctuation fix can never quietly stand in for a real mismatch.
+//
+// The log labels each change by document, so each unit carries a `file` for the call only.
+modules.forEach(u => { u.file = `Graded M${u.num}`; });
+const punctLog = punctuate(modules, { allOptions: true });
+modules.forEach(u => { delete u.file; });
 
 if (process.argv.includes('--report')) {
   let total = 0, scen = 0;
@@ -244,9 +322,12 @@ if (process.argv.includes('--report')) {
   console.log(`prompt lines:      ${all.filter(q => q.prompt.length > 1).length} questions use more than `
     + `one line, ${all.filter(q => q.prompt.length === 1).length} are one line`);
   console.log(`longest line:      ${longest} characters`);
+  console.log(`\npunctuation added or corrected: ${punctLog.length}`);
+  punctLog.forEach(r => console.log('  ' + r));
   console.log(`\nwarnings: ${warn.length}`);
   warn.forEach(w => console.log('  ' + w));
 } else {
   warn.forEach(w => console.error('WARN ' + w));
+  punctLog.forEach(r => console.error('PUNC ' + r));
   console.log(JSON.stringify(modules, null, 2));
 }

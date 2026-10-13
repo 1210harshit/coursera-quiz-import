@@ -29,9 +29,9 @@
 //     names an instructor, so a placeholder is emitted and warned about rather than left blank —
 //     "[Lead Instructor Name]" reads as the TODO it is, where blank reads as an omission.
 //   * "Aligned Learning Objective:" states the objective in FULL, module-specific wording rather
-//     than naming an id ("LO2"). The builder wants the id, so the text is resolved back to a
-//     Part 1 objective by its opening verb, which is unique across LO1-LO4 here (Analyze,
-//     Demonstrate, Apply, Construct). A resolution that is not unique is reported, never guessed.
+//     than naming an id ("LO2"). The builder wants the id. emotional-intelligence resolved it by
+//     the opening verb; that fails on all four modules here, so a reported positional fallback
+//     does the work instead — see the resolution block for why, and what to check.
 const path = require('path');
 const { readBlocks, isItemHeader, cellText, clean } = require('./lib-outline-course');
 
@@ -95,9 +95,16 @@ for (const b of blocks) {
       if (/^\[.*\]$/.test(course.instructor)) course.instructorIsPlaceholder = true;
       continue;
     }
-    // Part 1 states each objective in full: "LO1: Analyze what emotional intelligence is…".
-    if (!inPart2 && (m = t.match(/^(LO\d+)\s*(?:\([^)]*\))?\s*[:\-–]\s*(.+)$/i))) {
-      course.los[m[1].toUpperCase()] = m[2].trim();
+    // Part 1 states each objective in full: "LO1: Explain how cognitive, social, and…".
+    //
+    // The space in "LO 1:" is tolerated and the id normalised to "LO1". This outline labels its
+    // first objective "LO 1:" and the other five "LO2:"…"LO6:", and the stricter form of this
+    // regex silently dropped the first one: the course then read as five objectives, the module
+    // text-match for the last module failed, and the positional fallback aligned it to an LO a
+    // previous module already held. A label this close to the convention is a typo, not a
+    // different kind of line, so it is read rather than skipped.
+    if (!inPart2 && (m = t.match(/^LO\s*(\d+)\s*(?:\([^)]*\))?\s*[:\-–]\s*(.+)$/i))) {
+      course.los['LO' + m[1]] = m[2].trim();
       continue;
     }
 
@@ -190,9 +197,71 @@ for (const [k, m] of Object.entries(meta)) {
   if (hits.length === 1) {
     m.alignedLO = hits[0];
     m.alignedLOs = [hits[0]];
+    continue;
+  }
+  // AMBIGUOUS VERB — two objectives opening the same word. Resolve on the whole sentence
+  // before any positional guess, which is what the fallback below would otherwise do. This
+  // course states six objectives against four modules, so "module N takes LO N" is wrong by
+  // construction: it gave M4 the objective M3 already held, and that id reaches the built
+  // document's Guide Section rather than staying in the report.
+  if (hits.length > 1) {
+    const target = norm(m.alignedText);
+    const shared = lo => {
+      const a = norm(course.los[lo]);
+      let i = 0;
+      while (i < a.length && i < target.length && a[i] === target[i]) i++;
+      return i;
+    };
+    const exact = hits.filter(lo => norm(course.los[lo]) === target);
+    let pick = exact;
+    if (pick.length !== 1) {
+      const best = Math.max(...hits.map(shared));
+      pick = best > 0 ? hits.filter(lo => shared(lo) === best) : [];
+    }
+    if (pick.length === 1) {
+      m.alignedLO = pick[0];
+      m.alignedLOs = [pick[0]];
+      continue;
+    }
+  }
+  // VERB MATCHING DOES NOT WORK ON THIS COURSE, and unlike emotional-intelligence that is not a
+  // defect in one module — it fails on all four. Part 1 opens its objectives Explain / Use /
+  // Evaluate / Analyze, while the module lines open Identify / Apply / Construct / Recognize.
+  // The two sets are disjoint, so there is nothing to match on.
+  //
+  // The fallback is positional: module N takes LO N. That is an INFERENCE, so it is reported on
+  // every run with both texts, for a human to confirm or correct in course.json — never applied
+  // silently. It is a defensible default here because the outline lists one aligned objective
+  // per module in module order, against exactly four objectives, and each pairing reads
+  // correctly (M2's "Apply structured thinking methods, including algorithms, mind maps" against
+  // LO2's "Use analogical, recursive, and algorithmic thinking with visual tools"). Check it
+  // rather than trust it: a reordered Part 1 would make every pairing wrong in the same way.
+  const positional = 'LO' + k.slice(1);
+  if (course.los[positional]) {
+    m.alignedLO = positional;
+    m.alignedLOs = [positional];
+    warn.push(`${k}: aligned objective opens "${verb}", which matches no Part 1 objective `
+      + `(they open ${Object.keys(course.los).map(lo => course.los[lo].split(' ')[0]).join('/')}). `
+      + `INFERRED ${positional} by position — confirm it: module says "${m.alignedText.slice(0, 44)}…", `
+      + `${positional} says "${course.los[positional].slice(0, 44)}…"`);
   } else {
     warn.push(`${k}: aligned objective "${m.alignedText.slice(0, 48)}…" opens "${verb}", which matches `
-      + `${hits.length} Part 1 objectives (${hits.join(', ') || 'none'}) — not resolved to an LO id`);
+      + `${hits.length} Part 1 objectives (${hits.join(', ') || 'none'}), and there is no ${positional} `
+      + 'to fall back to — not resolved to an LO id');
+  }
+}
+
+// Two modules resolving to the SAME objective means one of them is wrong, and the id is printed
+// in each built document's Guide Section. Positional inference is how this happens when the
+// course states more objectives than it has modules.
+{
+  const claimed = new Map();
+  for (const [k, m] of Object.entries(meta)) {
+    if (!m.alignedLO) continue;
+    if (claimed.has(m.alignedLO)) {
+      warn.push(`${claimed.get(m.alignedLO)} and ${k} are both aligned to ${m.alignedLO} — one is `
+        + 'wrong, and the id reaches the Guide Section of every document built for that module');
+    } else claimed.set(m.alignedLO, k);
   }
 }
 
@@ -205,6 +274,30 @@ for (const [k, m] of Object.entries(meta)) {
       + '. V-numbers are derived by counting "Video" rows within the lesson, so an unexpected '
       + 'count means every reference after it may point at the wrong video.');
   }
+}
+
+// --- cumulative-numbering aliases --------------------------------------------------------
+// THE QUIZZES AND THIS OUTLINE NUMBER VIDEOS DIFFERENTLY, and both are internally consistent.
+// This outline restarts V at 1 in every lesson:      M1L1V1 M1L1V2  M1L2V1 M1L2V2
+// All five quiz documents count V across the MODULE: M1L1V1 M1L1V2  M1L2V3 M1L2V4
+//
+// Lesson 1 agrees, so the disagreement is invisible until lesson 2, where the codes look valid
+// and resolve to nothing. The translation is pure arithmetic — a lesson's cited number minus the
+// videos in the lessons before it — and it is exact here because every lesson holds exactly two
+// videos, which the check above enforces on every run.
+//
+// It lives here, in outline.json, rather than in the graded and practice parsers, because both
+// need it and two copies would be free to drift. Aliases are kept OUT of `map`: the coverage
+// counts ("16 of 16 videos referenced") and the builder's reference lines both read `map`, and
+// an alias there would double every lesson-2 video.
+const cumulativeAlias = {};
+for (const key of Object.keys(map)) {
+  const { module: mo, lesson: le } = map[key];
+  const offset = Object.keys(map)
+    .filter(k => map[k].module === mo && map[k].lesson < le).length;
+  if (!offset) continue;                       // lesson 1: the two numberings already agree
+  const v = +key.match(/V(\d+)$/)[1];
+  cumulativeAlias[`M${mo}L${le}V${v + offset}`] = key;
 }
 
 const notes = [];
@@ -260,5 +353,5 @@ if (process.argv.includes('--report')) {
 } else {
   warn.forEach(w => console.error('WARN ' + w));
   notes.forEach(n => console.error('NOTE ' + n));
-  console.log(JSON.stringify({ map, meta, index, course }, null, 2));
+  console.log(JSON.stringify({ map, meta, index, course, cumulativeAlias }, null, 2));
 }

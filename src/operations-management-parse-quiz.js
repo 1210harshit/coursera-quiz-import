@@ -41,6 +41,7 @@
 const fs = require('fs');
 const path = require('path');
 const { lines } = require('./lib-lines');
+const { punctuate } = require('./lib-punctuation');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const SLUG = 'operations-management';
@@ -91,7 +92,7 @@ const MAPPED  = /^Mapped to\s*:\s*(M\d+L\d+V\d+)\b/i;
 //   full label     Explanation for Option B (Correct):    <- this course, every option labelled
 //                  Explanation for Option A:                 in full, "(Correct)" optional
 //
-//   shared header  Explanation for Option B (Correct):    <- soft-skills, emotional-intelligence
+//   shared header  Explanation for Option B (Correct):    <- operations-management, operations-management
 //                  Explanation for Other Options:            and the rest of the graded family
 //                  A: …
 //
@@ -201,6 +202,24 @@ for (const n of MODULES) {
     // ---- checks --------------------------------------------------------------------------
     const letters = q.options.map(o => o.letter).join('');
     if (letters !== 'ABCD') { warn.push(`${where}: options are "${letters}", expected ABCD — skipped`); return; }
+    // TWO OPTIONS WITH THE SAME TEXT. Coursera rejects the question outright — "Duplicate
+    // answers are not allowed" — and every other check here passes: four options, one key,
+    // four feedback blocks, a resolving reference. It cannot be repaired at this end, since
+    // distinct feedback under identical options means the distractors were never written and
+    // inventing them is authoring assessment content. The verifier checks the built document
+    // again, so a duplicate cannot reach an upload either way.
+    {
+      const seenOpt = new Map();
+      for (const o of q.options) {
+        const k = String(o.text).replace(/\s+/g, ' ').trim().toLowerCase();
+        if (!k) continue;
+        if (seenOpt.has(k)) {
+          warn.push(`${where}: options ${seenOpt.get(k)} and ${o.letter} have identical text — `
+            + 'Coursera rejects the question ("Duplicate answers are not allowed"); the source '
+            + 'needs distinct distractors before this can be built.');
+        } else seenOpt.set(k, o.letter);
+      }
+    }
     if (!q.correct) { warn.push(`${where}: no "Correct Answer:" line — skipped`); return; }
     if (!q.correctExplFor) { warn.push(`${where}: no "(Correct)" explanation label — skipped`); return; }
     // The two independent statements of the key. See the header comment.
@@ -238,7 +257,7 @@ for (const n of MODULES) {
 // 218 lines identical to CommunicationSkills_PracticeQuiz.docx. Only 4 of its 16 questions
 // belonged to module 1. The check is kept in every course built from that family because the
 // mistake is one a person makes while assembling the sources, not one a parser can foresee.
-// Negotiating's four files are clean: 10 questions each, each mapping inside its own module.
+// This course's four files are clean: 10 questions each, every mapping inside its own module.
 const dropped = [];
 for (let i = modules.length - 1; i >= 0; i--) {
   const mo = modules[i];
@@ -270,6 +289,17 @@ for (const mo of modules) {
   }
 }
 
+// PUNCTUATION. Missing end marks and broken quote pairs are repaired before anything is built
+// — see lib-punctuation.js for the rules, including why an option set written WITHOUT end marks
+// throughout is left alone rather than "fixed" into the author's own style. Every change is
+// recorded on the question as q.punct, with the source wording kept in q.original, so a
+// punctuation fix can never quietly stand in for a real mismatch.
+//
+// The log labels each change by document, so each unit carries a `file` for the call only.
+modules.forEach(u => { u.file = `Graded M${u.num}`; });
+const punctLog = punctuate(modules, { allOptions: true });
+modules.forEach(u => { delete u.file; });
+
 if (process.argv.includes('--report')) {
   let total = 0, scen = 0;
   const key = {};
@@ -292,9 +322,12 @@ if (process.argv.includes('--report')) {
   console.log(`prompt lines:      ${all.filter(q => q.prompt.length > 1).length} questions use more than `
     + `one line, ${all.filter(q => q.prompt.length === 1).length} are one line`);
   console.log(`longest line:      ${longest} characters`);
+  console.log(`\npunctuation added or corrected: ${punctLog.length}`);
+  punctLog.forEach(r => console.log('  ' + r));
   console.log(`\nwarnings: ${warn.length}`);
   warn.forEach(w => console.log('  ' + w));
 } else {
   warn.forEach(w => console.error('WARN ' + w));
+  punctLog.forEach(r => console.error('PUNC ' + r));
   console.log(JSON.stringify(modules, null, 2));
 }

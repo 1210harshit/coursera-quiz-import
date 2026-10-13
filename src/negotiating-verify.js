@@ -1,6 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { spellOut, attach, trailer, isPlain, wrap, REF_OWN_LINE, SEP }
+  = require('./negotiating-lib-refer.js');
+const JOIN_PROMPT = process.argv.includes('--join-prompt');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const OUT = process.argv[2];
@@ -16,9 +19,11 @@ const dec = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g
 const stripVerdict = fb =>
   String(fb).replace(/^(?:\((?:Correct|Incorrect)\)|(?:Correct|Incorrect)[.:,!])\s*/i, '');
 
+
+
 const referLine = m => {
   const v = VIDEOS[m];
-  return `Refer to ${m}: ${v.video}`;
+  return `Refer to ${spellOut(m)}: ${v.video}`;
 };
 
 let fail = 0;
@@ -109,9 +114,24 @@ for (const mo of mods) {
     bad(`only ${new Set(used).size} distinct hyperlinks — template guidance links are missing`);
   for (const id of new Set(used)) if (!relIds.has(id)) bad('hyperlink points at missing rel ' + id);
 
-  // any object/array that leaked into the text instead of being rendered as runs
+  // Any object/array that leaked into the text instead of being rendered as runs.
+  //
+  // "undefined" needs a narrower test than the other two. This course's own source says
+  // "An undefined mission is covered earlier rather than in this classification" — a perfectly
+  // ordinary English adjective, which a bare /undefined/ scan flagged as a leak. A REAL leak is
+  // an interpolated value that came out empty, so it stands alone: it opens the line, or follows
+  // a colon or bracket, and is closed by the end of the line or punctuation — "Feedback:
+  // undefined", "Refer to undefined: …". Used as an adjective it is followed by its noun, which
+  // is what the lookahead rules out. [object Object] and NaN are never English and stay blanket.
+  //
+  // The closing class deliberately omits "." so that a sentence ending "… was undefined." reads
+  // as English and passes. That does mean a leak rendering exactly "undefined." would slip by
+  // this scan — an accepted trade, because it is not the only net: every option and feedback is
+  // also compared in full against the string rebuilt from quiz.json, which catches any leaked
+  // value exactly. This scan is the cheap belt-and-braces pass, not the primary check.
+  const LEAKED_UNDEF = /(?:^|[:(]\s*|\s)undefined(?=\s*(?:$|[):,(]))/;
   lines.forEach((l, i) => {
-    if (/\[object Object\]|undefined|NaN/.test(l))
+    if (/\[object Object\]|\bNaN\b/.test(l) || LEAKED_UNDEF.test(l))
       bad(`stringified value leaked into text at line ${i}: "${l.slice(0, 70)}"`);
   });
 
@@ -129,9 +149,23 @@ for (const mo of mods) {
     if (/importable content starts here|end of importable content/i.test(l))
       bad(`prose collides with a marker string at line ${i}: "${l.slice(0, 70)}"`);
   });
-  const secPairs = lines.slice(s + 1, e)
-    .map((l, i) => ({ l, x: xmls[s + 1 + i] }))
-    .filter(p => p.l);
+  // The reference is its own zero-spaced paragraph sitting IMMEDIATELY after its Feedback:
+  // paragraph — nothing between, which the importer would read as the end of the feedback.
+  // Fold each such pair back into one logical line joined by SEP, so every per-option check
+  // below reads one feedback line whichever form the document is in. A reference paragraph
+  // anywhere else is left unfolded, and the checks below then reject it.
+  const rawPairs = lines.slice(s + 1, e).map((l, i) => ({ l, x: xmls[s + 1 + i] }));
+  const folded = [];
+  rawPairs.forEach(p => {
+    const prev = folded[folded.length - 1];
+    if (REF_OWN_LINE && /^Refer to Module /.test(p.l) && prev && /^Feedback: /.test(prev.l)) {
+      if (!/w:after="0"/.test(p.x))
+        bad(`reference paragraph is not zero-spaced: "${p.l.slice(0, 60)}"`);
+      prev.l += SEP + p.l;
+      prev.x += p.x;
+    } else folded.push({ ...p });
+  });
+  const secPairs = folded.filter(p => p.l);
   const sec = secPairs.map(p => p.l);
 
   // Nothing inside the importable region may carry an intra-paragraph line break:
@@ -169,6 +203,7 @@ for (const mo of mods) {
     const src = mo.questions[k];
     const tag = `Q${src.num}`;
     const wantRef = referLine(src.mapped);
+    const STYLE_KEY = `graded:M${mo.num}`;
 
     if (blk[0] !== `Question ${src.num} - multiple choice, shuffle`)
       bad(`${tag} header wrong: "${blk[0]}"`);
@@ -177,6 +212,23 @@ for (const mo of mods) {
     const fbs = blk.filter(l => /^Feedback:\s/.test(l));
     if (opts.length !== 4) bad(`${tag} has ${opts.length} options`);
     if (fbs.length !== 4) bad(`${tag} has ${fbs.length} feedback blocks`);
+
+    // Two options with the SAME text. Coursera refuses the question outright with
+    // "Duplicate answers are not allowed", and nothing else here would catch it: the counts,
+    // the key, the feedback blocks and the reference are all correct. Checked on the BUILT
+    // document, not only at parse time, so it cannot reach an upload.
+    {
+      const seenOpt = new Map();
+      opts.forEach(l => {
+      const t = l.replace(/^\*?[A-F]:\s*/, '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const letter = (/^\*?([A-F]):/.exec(l) || [, '?'])[1];
+      if (!t) return;
+      if (seenOpt.has(t)) {
+        bad(`${tag} options ${seenOpt.get(t)} and ${letter} have identical text — Coursera `
+        + 'rejects the question ("Duplicate answers are not allowed")');
+      } else seenOpt.set(t, letter);
+      });
+    }
 
     const starred = opts.filter(l => l.startsWith('*'));
     if (starred.length !== 1) bad(`${tag} has ${starred.length} starred answers`);
@@ -188,16 +240,18 @@ for (const mo of mods) {
       if (opts[oi] !== wantOpt)
         bad(`${tag} option ${o.letter} mismatch\n      got:  ${opts[oi]}\n      want: ${wantOpt}`);
 
-      // required shape: ONE line — "Feedback: <explanation> (Refer to M1L1V1: ...)"
-      const wantFb = 'Feedback: ' + stripVerdict(src.feedback[o.letter]) + ' (' + wantRef + ')';
+      // required shape: ONE line — "Feedback: <explanation> (Refer to Module1 Lesson1 Video1: ...)"
+      const wantFb = 'Feedback: ' + attach(stripVerdict(src.feedback[o.letter]), wantRef, STYLE_KEY);
       if (fbs[oi] !== wantFb) {
         bad(`${tag} feedback ${o.letter} mismatch\n      got:  ${JSON.stringify(fbs[oi])}\n      want: ${JSON.stringify(wantFb)}`);
       } else {
-        if (fbs[oi].includes('\n'))
-          bad(`${tag} feedback ${o.letter}: contains a line break — must be one line`);
-        if (!fbs[oi].endsWith(' (' + wantRef + ')'))
-          bad(`${tag} feedback ${o.letter}: bracketed reference not at end, separated by one space`);
-        if (!/^Refer to M\d+L\d+V\d+: \S/.test(wantRef))
+        const breaks = (fbs[oi].match(/\n/g) || []).length;
+        if (breaks !== (REF_OWN_LINE ? 1 : 0))
+          bad(`${tag} feedback ${o.letter}: ${breaks} line break(s), expected ${REF_OWN_LINE ? 1 : 0}`);
+        if (!fbs[oi].endsWith(trailer(wantRef, STYLE_KEY)))
+          bad(`${tag} feedback ${o.letter}: reference not at the end, separated by `
+            + `${REF_OWN_LINE ? 'its own paragraph' : 'one space'}`);
+        if (!/^Refer to Module \d+ Lesson \d+ Video: \S/.test(wantRef))
           bad(`${tag} feedback ${o.letter}: bad reference line "${wantRef}"`);
         // brackets must be balanced and the reference fully enclosed
         const opens = (fbs[oi].match(/\(/g) || []).length;
@@ -206,8 +260,14 @@ for (const mo of mods) {
           bad(`${tag} feedback ${o.letter}: unbalanced brackets (${opens} open, ${closes} close)`);
         // A video title may itself contain brackets (e.g. "... Analyses (JHA)"), so the
         // wrapper may legitimately nest. Require the wrapper, not the absence of nesting.
-        if (!/\(Refer to M\d+L\d+V\d+: .+\)$/.test(fbs[oi]))
+        // Only the ACTIVE style is accepted. A document built in the other one fails here
+        // rather than shipping — that is the whole point of deriving both sides from one file.
+        if (isPlain(STYLE_KEY)) {
+          if (/\(Refer to /.test(fbs[oi]))
+            bad(`${tag} feedback ${o.letter}: reference is bracketed, but this course is plain`);
+        } else if (!/\(Refer to Module \d+ Lesson \d+ Video: .+\)$/.test(fbs[oi])) {
           bad(`${tag} feedback ${o.letter}: reference is not wrapped in brackets at the end`);
+        }
         // no leftover verdict word at the start of the explanation
         if (/^Feedback:\s*(Correct|Incorrect)\b/i.test(fbs[oi]))
           bad(`${tag} feedback ${o.letter}: verdict word still present -> "${fbs[oi].slice(0, 50)}"`);
@@ -224,8 +284,22 @@ for (const mo of mods) {
     // correct document. See the note there for the three uploads that settled the form.
     const firstOpt = blk.findIndex(l => /^\*?[A-D]:\s/.test(l));
     const gotPrompt = blk.slice(1, firstOpt).map(p => p.replace(/\s+/g, ' ').trim());
-    const wantParas = [(Array.isArray(src.prompt) ? src.prompt : [src.prompt])
-      .map(l => String(l).replace(/\s+/g, ' ').trim()).filter(Boolean).join(' ')]
+    // The source's paragraphs are kept; --join-prompt collapses them on both sides at once.
+    const srcParas = (Array.isArray(src.prompt) ? src.prompt : [src.prompt])
+      .map(l => String(l).replace(/\s+/g, ' ').trim()).filter(Boolean);
+    // A bare "Scenario:" is a LABEL for the paragraph it introduces, not a paragraph of its own
+    // — this source puts it on the question's header line, so the parse yields
+    // ["Scenario:", "<the scenario>"]. Fold it back in, so the prompt reads
+    // "Scenario — <text>" as one paragraph: that is the form five uploads settled, and the word
+    // is kept while its colon is not. A prompt whose paragraphs are genuinely separate still
+    // keeps its split, which is what convention 3 is about.
+    const labelled = [];
+    for (const t of srcParas) {
+      const i = labelled.length - 1;
+      if (i >= 0 && /^Scenario\s*:\s*$/i.test(labelled[i])) labelled[i] += ' ' + t;
+      else labelled.push(t);
+    }
+    const wantParas = (JOIN_PROMPT ? [labelled.join(' ')] : labelled)
       .map(t => t.replace(/^Scenario\s*:\s*/i, 'Scenario — '))
       .filter(Boolean);
     if (gotPrompt.length !== wantParas.length)
@@ -272,14 +346,15 @@ for (const mo of mods) {
       : /^\*?[A-D]:\s/.test(l) ? 'O'
       : /^Feedback:\s/.test(l) ? 'F'
       : 'P');
-    // Always 1: the builder joins every prompt to a single paragraph. A shape of HPP… is an
-    // unmatched line and breaks the parse for the whole document.
-    const nPromptParas = 1;
+    // Taken from the source, because the prompt keeps its paragraphs. Under --join-prompt this
+    // collapses to 1 and the shape becomes HP… again. An unexpected extra P is still a defect:
+    // it means a line the importer will not recognise has reached the question.
+    const nPromptParas = wantParas.length;
     const wantShape = 'H' + 'P'.repeat(nPromptParas) + 'OF'.repeat(src.options.length);
     if (shape.join('') !== wantShape)
       bad(`${tag} line grammar is ${shape.join('')}, expected ${wantShape}` +
           `\n      offending lines: ${JSON.stringify(blk.filter((l, i) =>
-            shape[i] === 'P' && i !== 1).map(l => l.slice(0, 60)))}`);
+            shape[i] === 'P' && i > nPromptParas).map(l => l.slice(0, 60)))}`);
   });
 
   const guide = lines.slice(e).join('\n');

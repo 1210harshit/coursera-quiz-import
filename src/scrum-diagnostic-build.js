@@ -17,6 +17,16 @@ const fs = require('fs');
 const path = require('path');
 const { zipDir } = require('./lib-zipwriter');
 
+// THE PRE-COURSE DIAGNOSTIC CARRIES NO REFERENCE AT ALL. Asked for on 2026-10-08. The
+// diagnostic runs BEFORE any video has been watched, so pointing a learner at a module they
+// have not reached yet is noise rather than help. The graded and practice quizzes of this
+// course are untouched and keep the form they shipped with.
+//
+// This course predates <slug>-lib-refer.js, so the switch is declared in the builder AND the
+// verifier rather than in one shared file. They must be changed together; the verifier below
+// FAILS on a reference it does not expect, which is what actually catches a drift.
+const DIAGNOSTIC_REFERENCE = false;
+
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const TMPL = path.join(SP, 'tmpl');
 const OUT = process.argv[2];
@@ -259,7 +269,8 @@ function buildBody(mo) {
       // no line breaks at all, matching Coursera's own convention of putting the review
       // pointer inline in the feedback sentence.
       // Explanation passes through verbatim — spacing inside it is preserved exactly.
-      const fbText = 'Feedback: ' + stripVerdict(q.feedback[o.letter] || '') + ' (' + refer + ')';
+      const fbText = 'Feedback: ' + stripVerdict(q.feedback[o.letter] || '')
+        + (DIAGNOSTIC_REFERENCE ? ' (' + refer + ')' : '');
       P.push(para([[fbText]]));
       P.push(blank());
     }

@@ -16,6 +16,9 @@
 const fs = require('fs');
 const path = require('path');
 const { zipDir } = require('./lib-zipwriter');
+const { spellOut, attach, trailer, isPlain, wrap, REF_OWN_LINE, SEP }
+  = require('./leadership-lib-refer.js');
+const JOIN_PROMPT = process.argv.includes('--join-prompt');
 
 const SP = process.env.QUIZ_WORK || path.join(__dirname, '..', 'work');
 const TMPL = path.join(SP, 'tmpl');
@@ -53,18 +56,21 @@ function stripVerdict(fb) {
   return out;
 }
 
-// "M1L1V2" -> "Refer to Module 1 Lesson 1 Video 2: Building Capability and Choosing Your Role"
+// "M1L1V2" -> "Refer to Module 1 Lesson 1 Video: Benefits for Body, Mind, Emotions, and Spirit"
 //
-// THE CODE IS SPELLED OUT IN FULL WORDS, at the course owner's request: M becomes Module, L
-// becomes Lesson, V becomes Video, each followed by a space before its number. Only this
-// learner-facing line expands; quiz.json and outline.json keep the compact M1L1V1 form, and so
-// does every mapping check. This also matches the diagnostic, which already wrote
-// "Refer to Module 1: <module title>" with the same spacing.
+// Module and lesson spell out in full words and the asset kind carries NO number. The title is
+// what identifies the item for the learner, so the ordinal is internal bookkeeping and never
+// reaches them. quiz.json and outline.json keep the compact M1L1V1 form and every mapping check
+// is still written against it — only this one learner-facing line expands.
 //
-// leadership-verify.js validates the same shape, so the two must change together — a verifier
-// still expecting M1L1V1 would reject the documents this builder produces.
-const spellOut = code => String(code).replace(
-  /^M(\d+)L(\d+)V(\d+)$/, (s, mo, le, vi) => `Module ${mo} Lesson ${le} Video ${vi}`);
+// The label is the Coursera item type the learner sees. Every mapping in this course is a V
+// code, which is a video by construction, so every line here reads "Video:". A course with
+// questions written from a reading or a lab labels those "Reading:" / "Lab:" instead — see
+// deploying-ai-agents, which carries a REFERENCE_AS table for exactly that case.
+//
+// The paired verifier re-derives this string independently, so the two must change together —
+// one still expecting a numbered "Video 2:" would reject every document this builder produces.
+
 
 function referLine(mapped) {
   const v = VIDEOS[mapped];
@@ -232,8 +238,33 @@ function buildBody(mo) {
     // kept, since those are layout rather than text styling.
     // This quiz stores the prompt as one string; the OSHA one stores an array of
     // paragraphs. Accept either so the same builder works for both courses.
-    const promptParas = [(Array.isArray(q.prompt) ? q.prompt : [q.prompt])
-      .map(line => String(line).trim()).filter(Boolean).join(' ')]
+    // The source's paragraph structure reaches the learner: a scenario written as several
+    // paragraphs with a closing question arrives that way, not as one block of text. The gap
+    // between them is paragraph SPACING (gapAfter below), never an empty paragraph — a blank
+    // line there would end the prompt as far as the importer is concerned.
+    //
+    // This overturns the repo's oldest rule, that a second prompt paragraph is an unmatched
+    // line which can fail the WHOLE document. That rule rested on a single failed upload that
+    // was never isolated, and its close cousin ("a free-standing Refer to paragraph rejects
+    // the question") was disproved outright by managing-break-probe.js.
+    //
+    // --join-prompt restores the single-line form, and is the first thing to try if an import
+    // ever fails on a document built from here on. The verifier takes the same flag.
+    const rawParas = (Array.isArray(q.prompt) ? q.prompt : [q.prompt])
+      .map(line => String(line).trim()).filter(Boolean);
+    // A bare "Scenario:" is a LABEL for the paragraph it introduces, not a paragraph of its own
+    // — this source puts it on the question's header line, so the parse yields
+    // ["Scenario:", "<the scenario>"]. Fold it back in, so the prompt reads
+    // "Scenario — <text>" as one paragraph: that is the form five uploads settled, and the word
+    // is kept while its colon is not. A prompt whose paragraphs are genuinely separate still
+    // keeps its split, which is what convention 3 is about.
+    const labelled = [];
+    for (const t of rawParas) {
+      const i = labelled.length - 1;
+      if (i >= 0 && /^Scenario\s*:\s*$/i.test(labelled[i])) labelled[i] += ' ' + t;
+      else labelled.push(t);
+    }
+    const promptParas = (JOIN_PROMPT ? [labelled.join(' ')] : labelled)
       .map(t => t.replace(/^Scenario\s*:\s*/i, 'Scenario — '))
       .filter(t => t.trim());
 
@@ -246,12 +277,6 @@ function buildBody(mo) {
     // colon in the first 25 characters as a label would block a legitimate question.
     // Multi-word openings warn instead of throwing, and the warning names the question so it
     // can be import-tested first.
-    if (promptParas.length > 1) {
-      atRisk.push(`M${mo.num} Q${q.num}: ${promptParas.length} prompt paragraphs`);
-      console.error(`WARN Module ${mo.num} Q${q.num}: prompt is ${promptParas.length} paragraphs. A `
-        + 'second prompt paragraph is an unmatched line and can break the parse for the WHOLE '
-        + 'document, not just this question.');
-    }
     promptParas.forEach((text, i) => {
       const bare = /^([A-Za-z][A-Za-z ]{0,24}):\s*$/.exec(text);
       const label = /^([A-Za-z][A-Za-z ]{0,24}):\s/.exec(text);
@@ -269,6 +294,7 @@ function buildBody(mo) {
     });
     P.push(blank());
     const refer = referLine(q.mapped);
+    const STYLE_KEY = `graded:M${mo.num}`;
     for (const o of q.options) {
       const star = o.letter === q.correct ? '*' : '';
       P.push(para([[`${star}${o.letter}: ${o.text}`]]));
@@ -278,8 +304,17 @@ function buildBody(mo) {
       // no line breaks at all, matching Coursera's own convention of putting the review
       // pointer inline in the feedback sentence.
       // Explanation passes through verbatim — spacing inside it is preserved exactly.
-      const fbText = 'Feedback: ' + stripVerdict(q.feedback[o.letter] || '') + ' (' + refer + ')';
-      P.push(para([[fbText]]));
+      // Explanation, then the reference as its OWN zero-spaced paragraph directly below it —
+      // nothing may sit between them. See leadership-lib-refer.js for the probe that
+      // settled this encoding, and pass --no-br to both builder and verifier for one line.
+      const fbBody = 'Feedback: ' + stripVerdict(q.feedback[o.letter] || '');
+      const fbRef = wrap(refer, STYLE_KEY);
+      if (REF_OWN_LINE) {
+        P.push(para([[fbBody]]));
+        P.push(para([[fbRef]], { tight: true }));
+      } else {
+        P.push(para([[fbBody + ' ' + fbRef]]));
+      }
       P.push(blank());
     }
   }
