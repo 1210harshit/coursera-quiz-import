@@ -84,16 +84,27 @@ const isItemHeader = cells => /^Learning Items?$/i.test((cells[0] || '').trim())
 // submitted deliverable ("Submit a document containing three versions…"), which is a graded
 // peer-assessed artefact rather than an in-platform lab environment.
 //
-// Role plays map to Roleplay, Coursera's own AI role-play item. It postdates the bundled
-// Course Template, so it is absent from that workbook's Ranges lookup — the builder appends
-// any such type to the lookup at build time. See EXTRA_ITEM_TYPES in course-import-build.js.
+// Role plays map to Practice Assignment.
+//
+// They were previously emitted as "Roleplay", on the assumption that this was Coursera's own
+// AI role-play item and was merely missing from the bundled Course Template's Ranges lookup.
+// That assumption was wrong. Uploading HAWS Course 2 on 2026-10-23 returned:
+//
+//     ITEM_TYPE_UNSET item in cell A64 failed to be processed.
+//     Error reason: Invalid item type in cell A64.
+//
+// for all three role-play rows (A64, A104, A144) while every other row imported. Widening the
+// workbook's dropdown never widened the importer's own vocabulary, exactly as the warning in
+// course-import-build.js said. These sources describe a solo activity - scenario, learner role,
+// goals, 10-15 minutes, no peer assessment - so the accepted type that matches is Practice
+// Assignment, not the graded Assignment or the peer-assessed Peer Review.
 function itemType(label) {
   const l = (label || '').trim();
   if (/^(intro\s*video|video\s*\d*|promo\s*video)/i.test(l)) return 'Video';
   if (/^reading/i.test(l))                                   return 'Reading';
   if (/^(dpq|discussion)/i.test(l))                          return 'Discussion Prompt';
   if (/^hands[-\s]?on/i.test(l))                             return 'Peer Review';
-  if (/^role\s*play/i.test(l))                               return 'Roleplay';
+  if (/^role\s*play/i.test(l))                               return 'Practice Assignment';
   if (/^graded\s*quiz/i.test(l))                             return 'Assignment';
   if (/^course[-\s]?end\s*project/i.test(l))                 return 'Peer Review';
   return null;
