@@ -30,7 +30,7 @@
 //     walk, "Data Quality, Freshness, and Access" yields zero questions.
 const fs = require('fs');
 const path = require('path');
-const { lines } = require('./lib-lines');
+const { lines, linesWithBold } = require('./lib-lines');
 
 // "Question 4 - Multiple choice, shuffle" / "Question 4 – Multiple choice, shuffle".
 // The source mixes hyphen and en dash; both mean the same thing.
@@ -46,13 +46,27 @@ const { lines } = require('./lib-lines');
 // treating "Reading M2L1" as a type produced a warning about a question that is perfectly
 // well formed. So the suffix is captured and classified rather than assumed to be a type.
 //     Question 1 : Multiple choice, shuffle     a COLON, in four files of Course 5
-const Q_HEAD = /^(?:Question\s+(\d+)|Q(\d+))\s*(?:[-–—:]\s*(.+?)|\((\s*.+?\s*)\)|\s+([A-Za-z].*?))?\s*$/i;
+//     Question 1.                              a TRAILING STOP and nothing else
+//
+// The trailing stop is why `\.?` sits after the number. The suffix group is optional, so a
+// bare "Question 1" already matched; "Question 1." did not, because the stop satisfies none
+// of the three suffix shapes and `$` then fails. Cybersecurity Course 1 writes two of its
+// twelve practice quizzes that way and one of them threw "no Question N header anywhere in
+// the document" rather than losing questions quietly, which is how it was found.
+const Q_HEAD = /^(?:Question\s+(\d+)|Q(\d+))\s*\.?\s*(?:[-–—:]\s*(.+?)|\((\s*.+?\s*)\)|\s+([A-Za-z].*?))?\s*$/i;
 // The suffix can also be a LIST of mappings joined by "+": "M1L1V1 + M1L3 Reading",
 // "M3L1 Reading + M3L2V2 + M3L3V1". Two graded quizzes state every question's sources that
 // way and carry no Asset line at all, so reading only a single bare code left twenty questions
 // with no reference while the mapping sat in plain sight on the header.
 const SUFFIX_CODE = /^(M\d+L\d+V\d+)$/i;
 const SUFFIX_KIND = /^(Reading|Lab|Video|FAQ|Discussion Prompt|Case Study)\s+(M\d+L\d+)$/i;
+// A fourth shape: the suffix IS the asset, written exactly as an "Asset:" line would write
+// it — "Question 1 — Video 1: Protect Surface Versus Attack Surface". Three of
+// Cybersecurity Course 1's practice quizzes cite their sources this way and carry no Asset
+// line at all, so without this the whole suffix was stored as the question TYPE: every one
+// of those questions was reported as "not multiple choice" AND as having no reference,
+// which is two misleading warnings for a question that is perfectly well formed.
+const SUFFIX_ASSET = /^(?:Demo Video|Video|Reading|Lab|FAQ|Discussion Prompt|Case Study)\s*\d*\s*:\s*\S/i;
 const SUFFIX_MAPS = new RegExp(
   '(M\\d+L\\d+V\\d+)'                                          // M1L1V1
   + '|(M\\d+L\\d+)\\s+(Reading|Lab|Video|FAQ)'                 // M1L3 Reading
@@ -67,7 +81,27 @@ const CORRECT_EXPL = /^Correct\s+Explanation\s*[:–—-]\s*(.*)$/i;
 // "Incorrect Explanation - A:". The final exam is written entirely this way.
 const LETTER_EXPL = /^([\w])\s*[—–-]\s*(Correct|Incorrect|Right|Wrong)\b\s*[.:,]?\s*(.*)$/i;
 const INCORRECT_EXPL = /^Incorrect\s+Explanation\s*[:–—-]*\s*([A-F])\s*[:–—-]\s*(.*)$/i;
+// A BARE "Incorrect Explanations:" HEADING, with the letters beneath it. Cybersecurity
+// Course 1 writes four of its documents this way, and the lines under the heading look
+// exactly like options -- "B. Better detection may shorten response time" -- so without a
+// mode they are read as four MORE options and the real options lose their feedback. The
+// heading therefore switches the reader into explanation mode until the next question.
+const INCORRECT_EXPL_HEAD = /^Incorrect\s+Explanations\s*[:–—-]?\s*$/i;
+const LETTERED_LINE = /^\*?\s*([A-F])\s*[:.]\s+(.+)$/;
 const ASSET = /^Asset\s*:\s*(.+)$/i;
+// "M3L1V2 + M3L2V1 + M3L3V2 + Module 3 Summary Reading" on a line of its own -- see the
+// branch that consumes it for why this is deliberately narrow.
+// "Sources Integrated:" with the sources on the lines BELOW it, one per line. The final
+// exam states every question's material this way, after the prompt and before the options.
+// Read as prompt continuation the whole block reaches the learner, which is what it did.
+const SOURCES_HEAD = /^Sources?\s+Integrated\s*:?\s*$/i;
+const SOURCES_LINE = /^[^.?!]*M\d+L\d+[^.?!]*\s\+\s[^.?!]+$/i;
+// A citation line that lists ONE source has no "+" to recognise it by. This happens when a
+// reviewer strikes the second source out, leaving "M3L3V3" alone on its line. Kept deliberately
+// narrow - the whole line must be nothing but a code and an optional kind - so no prose can
+// match it and be swallowed as a citation.
+const SOURCES_CODE_ONLY =
+  /^M\d+L\d+(?:V\d+)?(?:\s+(?:Demo Video|Video|Reading|Lab|FAQ|Discussion Prompt|Case Study)\s*\d*)?$/i;
 // "A:", "*A:", "**A:", "A." — four spellings of the same thing across these sources.
 //
 // The DOUBLE asterisk is the one that matters. Business Process Automation marks its key with
@@ -123,7 +157,9 @@ const TRAILING_KIND = new RegExp(`^(.*\\S)\\s*\\((${TRAILING_KINDS.join('|')})\\
 // items with COMMAS rather than semicolons, so the split looks for the next code rather than
 // for any comma — the titles contain commas of their own.
 const ASSET_CODE = /^(M(\d+)L(\d+)(?:V(\d+))?)\s*[—–-]\s*(.+)$/i;
-const CODE_SPLIT = /\s*[;,]\s*(?=M\d+L\d+)/i;
+// Sources are joined by ";", "," or "+" depending on the document. Module 3's graded quiz
+// uses "+" and mixes codes with plain titles, so the split does not require a code to follow.
+const CODE_SPLIT = /\s*(?:[;,]\s*(?=M\d+L\d+)|\s+\+\s+)/i;
 
 function splitAssets(text) {
   const raw = String(text);
@@ -259,13 +295,17 @@ function readSettings(head) {
 // objectives and the questions — plus `issues`, every deviation this reader had to absorb.
 // Nothing is repaired silently: each parser decides what to do with the issue list.
 function readQuizDoc(docxDir, label) {
-  const all = lines(path.join(docxDir, 'word', 'document.xml'));
+  // Read with formatting: some sources mark the key with BOLD and nothing else, and struck
+  // text is deleted text, so the text used here comes from the formatting-aware reader.
+  const allBold = linesWithBold(path.join(docxDir, 'word', 'document.xml'));
+  const all = allBold.map(x => x.text);
   const issues = [];
 
   const firstQ = all.findIndex(l => Q_HEAD.test(clean(l)));
   if (firstQ < 0) throw new Error(`${label}: no "Question N - …" header anywhere in the document`);
   const head = all.slice(0, firstQ).map(clean);
   const body = all.slice(firstQ).map(clean);
+  const bodyBold = allBold.slice(firstQ).map(x => x.bold);
 
   // ---- header ----
   const findHead = re => { const l = head.find(x => re.test(x)); return l || ''; };
@@ -331,7 +371,17 @@ function readQuizDoc(docxDir, label) {
   let q = null;
   let pendingOption = null;   // option awaiting its Feedback line
   let carried = null;         // Asset line read ahead of its own question header
+  // THE LABEL AND ITS TEXT CAN SIT ON SEPARATE LINES. Cybersecurity Course 1 writes
+  // "Correct Explanation:" / "Incorrect Explanation - A:" on one line and the explanation on
+  // the next, where the other courses put both on one. Matching the label and taking its empty
+  // capture left every option with no feedback at all and the explanation reported as an
+  // unrecognised line. So a label with nothing after it claims the line that follows.
+  let pendingExpl = null;     // option whose explanation is on the NEXT line
+  let explMode = false;       // past an "Incorrect Explanations:" heading in this question
+  let srcMode = false;        // past a "Sources Integrated:" heading in this question
+  let li = -1;
   for (const line of body) {
+    li++;
     // Everything after the end marker is reference-only scaffolding, not questions. The final
     // exam follows its last question with a score-interpretation table — "9 to 10", "Strong.
     // You are reading scenarios for the work…" — every line of which would otherwise be read
@@ -350,6 +400,7 @@ function readQuizDoc(docxDir, label) {
       const suffix = clean(qh[3] || qh[4] || qh[5] || '');
       const asCode = SUFFIX_CODE.exec(suffix);
       const asKind = SUFFIX_KIND.exec(suffix);
+      const asAsset = (!asCode && !asKind && SUFFIX_ASSET.test(suffix)) ? suffix : null;
       // Every mapping the suffix names, in order. Empty for a suffix that is a question type.
       const maps = [];
       if (!asCode && !asKind) {
@@ -363,17 +414,23 @@ function readQuizDoc(docxDir, label) {
       }
       q = {
         num: Number(qh[1] || qh[2]),
-        type: (asCode || asKind || maps.length) ? 'Multiple choice' : (suffix || 'Multiple choice'),
+        type: (asCode || asKind || asAsset || maps.length) ? 'Multiple choice' : (suffix || 'Multiple choice'),
         headerCode: asCode ? asCode[1].toUpperCase() : null,
         headerKind: asKind ? { kind: clean(asKind[1]), lesson: asKind[2].toUpperCase() } : null,
         headerMaps: maps,
         assets: [], assetRaw: '',
-        prompt: [], options: [], correct: null, starred: [], keyLine: null,
+        prompt: [], options: [], correct: null, starred: [], boldLetters: [], keyLine: null,
       };
+      explMode = false;
+      srcMode = false;
       if (carried) {
         q.assetRaw = carried;
         q.assets = splitAssets(carried);
         carried = null;
+      } else if (asAsset) {
+        // The header's own suffix is this question's source material.
+        q.assetRaw = asAsset;
+        q.assets = splitAssets(asAsset);
       }
       continue;
     }
@@ -418,10 +475,28 @@ function readQuizDoc(docxDir, label) {
       continue;
     }
 
+    if (INCORRECT_EXPL_HEAD.test(line)) { explMode = true; pendingOption = null; continue; }
+    // Under that heading a lettered line is an EXPLANATION, never another option.
+    if (explMode) {
+      const el = LETTERED_LINE.exec(line);
+      if (el) {
+        const target = q.options.find(o => o.letter === el[1].toUpperCase());
+        if (target) { target.text_feedback = clean(el[2]); target.correct = false; }
+        else issues.push(`Q${q.num}: an incorrect explanation names option ${el[1]}, which the `
+          + 'question does not have');
+        pendingOption = null;
+        continue;
+      }
+    }
+
     const ie = INCORRECT_EXPL.exec(line);
     if (ie) {
       const target = q.options.find(o => o.letter === ie[1].toUpperCase());
-      if (target) { target.text_feedback = clean(ie[2]); target.correct = false; }
+      if (target) {
+        target.text_feedback = clean(ie[2]);
+        target.correct = false;
+        if (!target.text_feedback) pendingExpl = target;
+      }
       else issues.push(`Q${q.num}: an "Incorrect Explanation — ${ie[1]}" names an option the `
         + 'question does not have');
       pendingOption = null;
@@ -430,10 +505,21 @@ function readQuizDoc(docxDir, label) {
     const ce = CORRECT_EXPL.exec(line);
     if (ce) {
       const target = q.keyLine && q.options.find(o => o.letter === q.keyLine);
-      if (target) { target.text_feedback = clean(ce[1]); target.correct = true; }
+      if (target) {
+        target.text_feedback = clean(ce[1]);
+        target.correct = true;
+        if (!target.text_feedback) pendingExpl = target;
+      }
       else issues.push(`Q${q.num}: a "Correct Explanation" with no "Correct Answer" line above `
         + 'it, so there is no option to attach it to');
       pendingOption = null;
+      continue;
+    }
+
+    // The line after a bare explanation label belongs to it.
+    if (pendingExpl && line) {
+      pendingExpl.text_feedback = clean(line);
+      pendingExpl = null;
       continue;
     }
 
@@ -497,6 +583,7 @@ function readQuizDoc(docxDir, label) {
         correct: null, text_feedback: '',
       };
       if (op[1]) q.starred.push(op[2]);
+      if (bodyBold[li]) q.boldLetters.push(op[2]);
       q.options.push(pendingOption);
       if (inlineFb) {
         const v = VERDICT.exec(inlineFb);
@@ -514,6 +601,34 @@ function readQuizDoc(docxDir, label) {
       continue;
     }
 
+    // A SOURCES LINE OF ITS OWN. Module 3's graded quiz writes the header suffix as a count
+    // -- "Question 1 - Integrated Across 4 Areas" -- and puts the sources on the line below
+    // it, joined by "+": "M3L1V2 + M3L2V1 + M3L3V2 + Module 3 Summary Reading". Read as
+    // prompt text it reaches the LEARNER as a row of codes above the question, which is
+    // exactly what it did. It carries the same information as an "Asset:" line, so it is
+    // read as one. Guarded tightly: before any prompt or option, at least two parts, at
+    // least one mapping code, and no sentence punctuation -- a prompt containing a "+" is
+    // left alone.
+    // The "Sources Integrated:" block: everything until the first option belongs to it.
+    if (SOURCES_HEAD.test(line)) { srcMode = true; pendingOption = null; continue; }
+    if (srcMode) {
+      if (OPTION.test(line) || FEEDBACK.test(line) || CORRECT_ANSWER.test(line)) {
+        srcMode = false;          // the block has ended; handle this line normally
+      } else {
+        if (line) {
+          q.assetRaw = q.assetRaw ? q.assetRaw + '; ' + line : line;
+          q.assets = splitAssets(q.assetRaw);
+        }
+        continue;
+      }
+    }
+    if (!q.prompt.length && !q.options.length
+        && (SOURCES_LINE.test(line) || SOURCES_CODE_ONLY.test(line))) {
+      q.assetRaw = q.assetRaw ? q.assetRaw + '; ' + line : line;
+      q.assets = splitAssets(q.assetRaw);
+      pendingOption = null;
+      continue;
+    }
     if (!q.options.length) { q.prompt.push(line); pendingOption = null; continue; }
     // Anything after the options that is not an option or a feedback line is a continuation
     // of the last feedback — the source does not do this, but a revision might.
@@ -573,19 +688,42 @@ function readQuizDoc(docxDir, label) {
       }
     }
     const keyed = qq.options.filter(o => o.correct === true).map(o => o.letter);
+    // THE STAR KEYS THE QUESTION WHEN NOTHING ELSE DOES. Coursera's own convention marks the
+    // answer with a star, so a document whose feedback simply explains each option without
+    // opening "Correct."/"Wrong." is still unambiguously keyed. Cybersecurity Course 1 writes
+    // three of its practice quizzes that way and every question in them was refused for having
+    // no key, while the source states the key plainly on the option line. Only ever trusted
+    // when exactly one option is starred; two stars stay an error, reported below.
+    const starKeyed = keyed.length === 0 && qq.starred.length === 1;
+    // BOLD IS A KEY TOO, when nothing else is one. A source that emphasises the correct
+    // option and marks it no other way is still unambiguously keyed, and read as plain text
+    // such a document has no key at all -- Cybersecurity Course 1's Module 4 Lesson 2
+    // practice quiz is written that way and every one of its questions was refused. Trusted
+    // only when exactly one option is bold and nothing else keyed the question; a bold run
+    // inside a longer option does not count, which linesWithBold already enforces.
+    const boldKeyed = keyed.length === 0 && !starKeyed && qq.boldLetters.length === 1;
     // A verdict-less option only matters when the question is NOT otherwise keyed. With exactly
-    // one "Correct." among the four, the remaining three are wrong by construction.
-    if (keyed.length !== 1) {
+    // one "Correct." among the four, the remaining three are wrong by construction — and a
+    // starred key makes the same guarantee.
+    if (keyed.length !== 1 && !starKeyed && !boldKeyed) {
       for (const o of qq.options.filter(o => o.noVerdict)) {
         issues.push(`Q${qq.num} option ${o.letter}: feedback opens with no Correct/Wrong verdict, `
           + 'and the question is not keyed by any other option, so it cannot be keyed at all');
       }
     }
     if (keyed.length === 1) qq.correct = keyed[0];
+    else if (starKeyed) qq.correct = qq.starred[0];
+    else if (boldKeyed) qq.correct = qq.boldLetters[0];
     else if (keyed.length === 0) issues.push(`Q${qq.num}: no option's feedback says "Correct"`);
     else issues.push(`Q${qq.num}: ${keyed.length} options say "Correct" (${keyed.join(', ')})`);
 
     // The star, where the source bothered to write one, must agree with the verdict.
+    // Bold that disagrees with a key established another way is reported, never silently used.
+    if (qq.correct && qq.boldLetters.length === 1 && qq.boldLetters[0] !== qq.correct
+        && !boldKeyed) {
+      issues.push(`Q${qq.num}: option ${qq.boldLetters[0]} is bold but ${qq.correct} is the one `
+        + 'keyed by the source — the two disagree and this question needs a human decision');
+    }
     if (qq.starred.length > 1) {
       issues.push(`Q${qq.num}: ${qq.starred.length} options are starred (${qq.starred.join(', ')})`);
     } else if (qq.starred.length === 1 && qq.correct && qq.starred[0] !== qq.correct) {
