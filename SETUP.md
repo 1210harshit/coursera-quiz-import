@@ -459,7 +459,26 @@ first thing to try if an import fails.
 feedback and the reference can all be correct. Checked at parse time and again on the built
 document.
 
-Two things follow, and both have bitten already:
+**5. Struck-through text is deleted text.** A reviewer who strikes a citation out has removed
+it; reading it anyway puts a reference in front of the learner that the author crossed out.
+`linesWithBold` in `lib-lines.js` drops runs carrying a live `<w:strike/>` (`w:val="0"` turns
+the property off and does not count), and `lib-quizdoc-ibm.js` takes its text from that reader
+rather than the strike-blind `lines`. Two consequences, both found the hard way on
+Cybersecurity Course 1's Module 3 graded quiz:
+
+- Deleting one of two cited sources **orphans the connector**. `M3L3V3 + M3L3 FAQ` becomes
+  `M3L3V3 +`, which no longer matches the citation-line pattern at all, so the line is skipped
+  and the question silently cites nothing. Lines the filter changed are tidied for dangling and
+  doubled connectors — only at the ends, because titles legitimately contain commas.
+- A citation that is left with **one** source has no `+` to be recognised by, hence
+  `SOURCES_CODE_ONLY`. Keep it narrow: the whole line must be a code and an optional kind, so
+  no prose can be swallowed as a citation.
+
+Before changing a shared reader, scan every stored source for the construct first
+(`work/*/docs/*/word/document.xml`) — strike-through turned out to exist in exactly one of 113
+documents, which is what made the change safe for the six courses sharing that reader.
+
+Two things follow from all five, and both have bitten already:
 
 - **The builder and its verifier must change together.** The verifier re-derives the expected
   string independently rather than trusting the builder, which is the whole point of it. A
@@ -539,6 +558,14 @@ grep -c '<w:br'    work/<slug>/quiz/word/document.xml   # line breaks inside par
 | `Q1 (M1L3V1)` headers carrying the mapping, beside `Question N` headers that do not | `agentic-teams-c2` |
 | A header suffix that is a mapping LIST (`M1L1V1 + M1L3 Reading`), not a question type | `agentic-teams-c2` |
 | `Correct Answer: C` on its own line instead of a starred option | `agentic-teams-c2` |
+| The mapping code and the prompt on ONE header line (`C2M1L1V1: <prompt>`), no `Question n` anywhere | `haws-c2` |
+| `A)` options, a single `Explanation:` block for the key and an `Incorrect Options:` block for the rest | `haws-c2` |
+| `A) <text>` meaning an OPTION above a heading and an EXPLANATION below it | `haws-c2` |
+| One module whose questions are cross-functional by design and cite NO video, beside modules that do | `haws-c2` |
+| One quiz document per module, the module number readable only from the filename | `haws-c2` |
+| `Explanation for Option B (Correct):` with its text on the NEXT line, then `Explanation for Other Options:` keyed `A:` | `haws-c1` |
+| `A.` meaning an option and `A:` meaning that option's explanation, in the same document | `haws-c1` |
+| A module whose `Title of the Module:` shares one paragraph with the `Description:` below it, while the other thirty stand alone | `haws-c1` |
 | `Correct Explanation:` / `Incorrect Explanation — A:` / `A — Incorrect.` instead of `Feedback:` | `agentic-teams-c2` |
 | `Asset:` lines BELOW their own question rather than above the next one — decided by the leftover | `agentic-teams-c2` |
 | Assets as `M1L2V1 — Title`, comma-separated, where titles contain commas | `agentic-teams-c2` |
