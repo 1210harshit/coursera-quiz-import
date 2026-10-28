@@ -1,35 +1,38 @@
-// Parser for the CSTP Course 2 graded assessment (Communication & Storytelling for Technology
-// Professionals — Course 2: Storytelling and Influence in Technical Environments).
+// Parser for the HAWS Course 1 graded assessment (Human + AI Partnership: Mindsets,
+// Foundations & Real-World Value).
 //
-// Paragraph-based. Its own shape:
+// Paragraph-based. ONE document holds every module — work/haws-c1/docs/C1_Graded_Assessment —
+// and the parser refuses to run on anything but exactly one, since a second would silently
+// double every question. Its shape:
 //
-//   Module 1: The Strategic Power of Story
-//   Graded Assessment (GA) — 10 Questions
-//   Question 1
-//   Mapped to: M1L1V1   |   Bloom's: Understand
-//   Scenario: A team must present a platform upgrade …          <- optional, own paragraph
-//   Using the three-act model, how should the update be structured?
-//   a) Present the components in order of build difficulty      <- LOWERCASE letter, ")" not "."
-//   b) …  c) …  d) …
-//   ✅ Correct Answer: C                                         <- UPPERCASE letter
-//   Incorrect (a): Build difficulty is an internal ordering …   <- the letter is in the LABEL,
-//   Incorrect (b): …                                               so explanations are keyed by
-//   Correct (c): …                                                 it rather than by position
-//   Incorrect (d): …
+//   Module 1: <module title>
+//   Q1. <the whole prompt, on the header line>
+//   Mapped to: M1L1V1
+//   A. <option text>                               <- "A." with a STOP is an OPTION
+//   B. …  C. …  D. …
+//   ✅ Correct Answer: A
+//   Explanation for Option A (Correct):            <- label alone; its text is the NEXT line
+//   When qualifications are equal, the behaviours on display are what separate candidates.
+//   Explanation for Other Options:                 <- one heading, then the three wrong ones
+//   B: <text>                                      <- "B:" with a COLON is an EXPLANATION
+//   C: …  D: …
 //
 // Notes:
 //
-//   * options are labelled "a)" and the key is stated "A", so the two are compared
-//     case-insensitively and stored uppercase.
-//   * the explanation label states both the verdict and the letter. That makes the verdict a
-//     second statement of the key, checked against the "Correct Answer" line rather than
-//     trusted. The label is consumed, so nothing needs stripping from the text.
-//   * a scenario is its own paragraph, so a scenario question has a TWO-LINE prompt. Both
-//     lines are kept, in source order — the split is the author's. The builder drops only the
-//     leading "Scenario:" label, without which the importer reads the line as an answer option.
-//   * "Question 10" is written across runs as "Question " + "10  ". Concatenation and a trim
-//     handle it; no special case is needed.
-//   * a running "CSTP – Course 2" header paragraph sits between modules and is ignored.
+//   * "A." means an option and "A:" means that option's explanation, in the same document. One
+//     character separates them, so both patterns are anchored and punctuation-specific rather
+//     than sharing a letter-label pattern, and the reader's mode is checked as well — neither
+//     can be read as the other.
+//   * the explanation text sits on the line BELOW its label. The label pattern still accepts
+//     text after the colon, so a revision that moves it up reads without a change here.
+//   * the "(Correct)" label states the key a SECOND time, independently of the "Correct Answer"
+//     line. The two are checked against each other rather than one being trusted; that is the
+//     only independent witness this source offers.
+//   * the key line opens with a tick glyph, so the match is on the label and not the glyph.
+//   * a scenario is its own paragraph, giving a two-line prompt. Both lines are kept in source
+//     order — the split is the author's. The builder drops only the leading "Scenario:" label,
+//     without which the importer reads the line as an answer option.
+//   * "Graded Quiz", "Course Name:" and "Volume:" are running header paragraphs and ignored.
 //
 // Content passes through with only leading and trailing whitespace removed.
 const fs = require('fs');

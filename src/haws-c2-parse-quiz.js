@@ -1,35 +1,44 @@
-// Parser for the CSTP Course 2 graded assessment (Communication & Storytelling for Technology
-// Professionals — Course 2: Storytelling and Influence in Technical Environments).
+// Parser for the HAWS Course 2 module graded quizzes (Human + AI: Working With AI Tools,
+// Practical Skills, Prompts & Systems).
 //
-// Paragraph-based. Its own shape:
+// Paragraph-based, and the same question grammar as haws-c1. Two things are its own.
 //
-//   Module 1: The Strategic Power of Story
-//   Graded Assessment (GA) — 10 Questions
-//   Question 1
-//   Mapped to: M1L1V1   |   Bloom's: Understand
-//   Scenario: A team must present a platform upgrade …          <- optional, own paragraph
-//   Using the three-act model, how should the update be structured?
-//   a) Present the components in order of build difficulty      <- LOWERCASE letter, ")" not "."
-//   b) …  c) …  d) …
-//   ✅ Correct Answer: C                                         <- UPPERCASE letter
-//   Incorrect (a): Build difficulty is an internal ordering …   <- the letter is in the LABEL,
-//   Incorrect (b): …                                               so explanations are keyed by
-//   Correct (c): …                                                 it rather than by position
-//   Incorrect (d): …
+// ONE DOCUMENT PER MODULE, and the module number is readable only from the FILENAME —
+// work/haws-c2/docs/C2M1_GAQs, C2M2_GAQs, C2M3_GAQs_ — so it is taken from there and the
+// documents are sorted by it. Nothing inside a document states which module it is: the
+// "Module N" line it does carry is a banner, not a heading, and the trailing underscore on the
+// third folder is why the name is matched rather than compared.
+//
+//   Course 2 Module 1 GAQs                         <- banner, ignored
+//   Q1. <the whole prompt, on the header line>
+//   Mapped to: M1L1V1
+//   A. <option text>                               <- "A." with a STOP is an OPTION
+//   B. …  C. …  D. …
+//   ✅ Correct Answer: C
+//   Explanation for Option C (Correct):            <- label alone; its text is the NEXT line
+//   Connect first and communicate second. …
+//   Explanation for Option A:                      <- one labelled block PER option, including
+//   Most people have the order backward. …            the wrong ones
+//
+// ONE EXPLANATION BLOCK PER OPTION is the second difference. Course 1 groups the three wrong
+// options under a single "Explanation for Other Options:" heading and keys them "A:"; this
+// course gives each its own "Explanation for Option A:" label, with "(Correct)" present only on
+// the key. Both shapes are accepted here, so one parser reads either and a source that switches
+// mid-course does not need a second.
 //
 // Notes:
 //
-//   * options are labelled "a)" and the key is stated "A", so the two are compared
-//     case-insensitively and stored uppercase.
-//   * the explanation label states both the verdict and the letter. That makes the verdict a
-//     second statement of the key, checked against the "Correct Answer" line rather than
-//     trusted. The label is consumed, so nothing needs stripping from the text.
-//   * a scenario is its own paragraph, so a scenario question has a TWO-LINE prompt. Both
-//     lines are kept, in source order — the split is the author's. The builder drops only the
-//     leading "Scenario:" label, without which the importer reads the line as an answer option.
-//   * "Question 10" is written across runs as "Question " + "10  ". Concatenation and a trim
-//     handle it; no special case is needed.
-//   * a running "CSTP – Course 2" header paragraph sits between modules and is ignored.
+//   * "(Correct)" is an optional group. It states the key a SECOND time, independently of the
+//     "Correct Answer" line, and the two are checked against each other rather than trusted.
+//   * "A." means an option and "A:" means an explanation. The separator tells them apart and
+//     the reader's mode is checked as well, so an option cannot be read as an explanation once
+//     the explanation blocks have begun.
+//   * the key line opens with a tick glyph, so the match is on the label and not the glyph.
+//   * a scenario is its own paragraph, giving a two-line prompt. Both lines are kept in source
+//     order. The builder drops only the leading "Scenario:" label, without which the importer
+//     reads the line as an answer option.
+//   * "Course N Module N GAQs", "Course Name:" and a bare "Module N" are banner paragraphs and
+//     ignored.
 //
 // Content passes through with only leading and trailing whitespace removed.
 const fs = require('fs');

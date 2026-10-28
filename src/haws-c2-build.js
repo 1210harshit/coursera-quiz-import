@@ -1,7 +1,10 @@
-// Builder for CSTP Course 2 (Storytelling and Influence in Technical Environments) — one Assignment
-// Import .docx per module. Two course-specific pieces: stripVerdict below, and a Bloom's
-// column in the working-area table, which this assessment is the first Google Ads source to
-// record.
+// Builder for HAWS Course 2 (Human + AI: Working With AI Tools, Practical Skills, Prompts &
+// Systems) — one Assignment Import .docx per module, named
+// Coursera_Import_Module_<n>_Graded_Quiz_HAWS_Course_2.docx.
+//
+// Copied from the CSTP Course 2 builder; the one course-specific piece left is stripVerdict
+// below. There is NO Bloom's column in the working-area table — these sources state no Bloom
+// level, unlike the CSTP ones this was copied from. See the note above that table.
 const fs = require('fs');
 const path = require('path');
 const { zipDir } = require('./lib-zipwriter');

@@ -1,7 +1,9 @@
-// CSTP Course 2, "Storytelling and Influence in Technical Environments" — outline .docx ->
-// course.json for the course-content importer. Course 2 only; the source carries four.
+// HAWS Course 2, "Human + AI: Working With AI Tools, Practical Skills, Prompts & Systems" —
+// outline .docx -> course.json for the course-content importer. Course 2 only; the source
+// document carries all four courses of the program.
 //
-// Same document and same shape as cstp-course-1-parse-course.js, scoped one course along:
+// Copied from the CSTP Course 2 parser, whose outline has the same shape, and scoped the same
+// way:
 //   * headings are bare ("Module 1", "Lesson 1") with the name on a following
 //     "Title of the Module:" / "Title of the Lesson:" line
 //   * capture runs from the "Course 2" heading to the next "Course <n>" heading

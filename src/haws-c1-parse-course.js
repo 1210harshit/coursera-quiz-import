@@ -1,7 +1,21 @@
-// CSTP Course 2, "Storytelling and Influence in Technical Environments" — outline .docx ->
-// course.json for the course-content importer. Course 2 only; the source carries four.
+// HAWS Course 1 course-content parser — NOT ADAPTED, AND NOT WIRED UP. DO NOT RUN IT YET.
 //
-// Same document and same shape as cstp-course-1-parse-course.js, scoped one course along:
+// This file is a copy of haws-c2-parse-course.js with nothing changed but SLUG. Everything
+// that selects a course still selects COURSE 2, so running it would write Course 2's modules,
+// lessons and items into work/haws-c1/course.json under the Course 1 slug — a workbook that
+// builds and verifies cleanly while describing the wrong course.
+//
+// It has never been run: there is no work/haws-c1/course.json and no work/haws-c1/dist. Only
+// the quiz pipeline exists for Course 1, and that side IS correct —
+// haws-c1-parse-outline.js scopes to Course 1 and resolves the Course 1 title.
+//
+// Before using this, change all of:
+//   * the capture range, line 43: /^Course\s*2\b/ selects Course 2
+//   * the objective ids: C2LO throughout, including the aligned-objective patterns
+//   * the section refs "Introduction to Course 2" / "Supplementary Items for Course 2"
+//   * the hardcoded first line of the course description, which still names the CSTP program
+//
+// The rest of the shape below is accurate — it is the same four-course source document:
 //   * headings are bare ("Module 1", "Lesson 1") with the name on a following
 //     "Title of the Module:" / "Title of the Lesson:" line
 //   * capture runs from the "Course 2" heading to the next "Course <n>" heading

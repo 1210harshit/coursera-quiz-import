@@ -1,8 +1,11 @@
-// Outline parser scoped to COURSE 2 only — quiz-pipeline side.
+// Outline parser for HAWS Course 1 (Human + AI Partnership: Mindsets, Foundations &
+// Real-World Value) — quiz-pipeline side, scoped to COURSE 1 only.
 //
-// The source holds four courses in one document. Capture starts at the "Course 2" heading and
-// stops at "Course 3", exactly as cstp-course-1-parse-outline.js does for the first course.
-// Modules and lessons share a heading level here, so they are told apart by text.
+// The source holds all four courses of the program in one document. Capture starts at the
+// "Course 1" heading and stops at the next "Course <n>", the way
+// cstp-course-1-parse-outline.js does. The course number is the COURSE_NO constant below, so
+// the only difference between this file and haws-c2-parse-outline.js is that value and the
+// slug. Modules and lessons share a heading level here, so they are told apart by text.
 //
 // Two things differ from the Course 1 parser:
 //
