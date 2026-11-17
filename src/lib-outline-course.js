@@ -48,7 +48,7 @@ function paraText(p) {
 // Bare paragraphs are different. They are matched against heading patterns ("Module 1",
 // "Title of the Lesson:"), so they keep clean(), which folds runs and makes those patterns
 // robust against stray spacing. Nothing quoted verbatim into an import comes from there.
-const cellText_ = s => String(s).replace(/ /g, ' ').replace(/^[ \t]+|[ \t]+$/g, '').trim();
+const cellText_ = s => String(s).replace(/ /g, ' ').replace(/^[ \t]+|[ \t]+$/g, '').trim();
 
 /** Body of a document.xml as an ordered list of {type:'p',text} and {type:'table',rows}. */
 function readBlocks(documentXml) {
@@ -132,6 +132,18 @@ function minutes(text) {
   return one ? +one[1] : null;
 }
 
+// Word writes a bulleted list's marker as a glyph from the Symbol or Wingdings font, which
+// lands in the private-use area: U+F0B7 is Symbol's bullet, U+F0A7 / U+F0D8 / U+F076 the
+// Wingdings ones. No font outside Word can render those, so the character reaches Coursera as
+// a replacement box in front of the first word. Every occurrence found in the sources so far
+// is a bulleted discussion question with the bullet leading the line, so it becomes a real
+// bullet, and the spaces Word put after it go with it.
+//
+// The non-breaking space replaced alongside it had been lost from the literal here and in
+// cellText_ — both matched a plain space, a no-op — so NBSPs had been reaching the workbooks.
+// clean() near the top of this file still holds its own and was never affected.
+const PUA_BULLET = /^[\uE000-\uF8FF]+[ \t]*/;
+
 /**
  * Tidy a table cell for use, keeping paragraph breaks. Trims each line's ends and drops empty
  * lines; does NOT collapse runs of spaces inside a line, for the reason given at readBlocks —
@@ -139,7 +151,7 @@ function minutes(text) {
  */
 function cellText(s) {
   return (s || '').split('\n')
-    .map(l => l.replace(/ /g, ' ').replace(/^[ \t]+|[ \t]+$/g, ''))
+    .map(l => l.replace(/ /g, ' ').replace(PUA_BULLET, '• ').replace(/^[ \t]+|[ \t]+$/g, ''))
     .filter(l => l.trim())
     .join('\n');
 }

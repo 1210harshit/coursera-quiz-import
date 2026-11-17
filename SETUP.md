@@ -569,6 +569,11 @@ grep -c '<w:br'    work/<slug>/quiz/word/document.xml   # line breaks inside par
 | `Correct Explanation:` / `Incorrect Explanation — A:` / `A — Incorrect.` instead of `Feedback:` | `agentic-teams-c2` |
 | `Asset:` lines BELOW their own question rather than above the next one — decided by the leftover | `agentic-teams-c2` |
 | Assets as `M1L2V1 — Title`, comma-separated, where titles contain commas | `agentic-teams-c2` |
+| The question number and its whole prompt, scenario included, on ONE line (`Q1. Scenario: … ?`) | `genai-legal` |
+| An `Options:` label line that sometimes carries option A and sometimes does not | `genai-legal` |
+| Several options, or two explanations, run together inside ONE paragraph | `genai-legal` |
+| `Correct Answer: B` and `Mapped to: M1L1V1` split by a `<w:br/>` inside one paragraph | `genai-legal` |
+| Some questions styled Heading2 and others left as plain paragraphs | `genai-legal` |
 
 ### When a source states its mapping twice
 
@@ -692,6 +697,7 @@ them before editing a builder.
 | Never put a `<w:br/>` line break in a `Feedback:` paragraph | It imports, but Coursera renders it as several blank rows with stray spaces. To put the reference on its own line, use a separate paragraph (probe upload, 2026-09-28). |
 | Guidance prose must not quote the marker strings | Coursera's own template says *"Imported content"* in prose and *"Importable content"* in the markers, deliberately. |
 | Prompt length is fine | Coursera's reference prompt is ~800 characters — length is never the cause. |
+| A bulleted cell carries Word's own bullet **character** | Word writes a bulleted list's marker as a glyph from the Symbol or Wingdings font, which lands in the Unicode private-use area (`U+F0B7` for Symbol's bullet; `U+F0A7`, `U+F0D8`, `U+F076` for Wingdings). The XML holds the character, not a list style, so it is read as content and imports as a replacement box in front of the first word. `cellText` converts a leading run of them to `• ` (2026-11-16). Found in four outlines, always a bulleted discussion question. **`cstp-course-3` and `haws-c2` were delivered before the fix and carry the box in their Discussion Prompt** — rebuild them if they matter. |
 
 If an import fails, Coursera returns a `processing_error` file naming the questions. Compare
 the failures against the ones that succeeded — the difference is always structural, never

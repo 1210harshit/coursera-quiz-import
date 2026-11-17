@@ -442,7 +442,7 @@ outlines carry nothing finer. Richer per-lesson objectives are a normal manual e
 |---|---|
 | `lib-zipwriter.js` | Minimal OPC/zip writer (`[Content_Types].xml` forced first). Avoids a zip binary dependency. Used by both pipelines. |
 | `lib-xlsx.js` | SpreadsheetML plumbing for the course-content builder: shared-string append, a row splitter, and a cell rewriter that clones a template row and preserves its style id. |
-| `lib-outline-course.js` | Outline block reader plus the item-type, video-format and duration rules shared by every `*-parse-course.js`. Drops struck-through runs, so superseded draft wording never splices into its own replacement — the outline equivalent of `lib-lines-strikeaware.js`. |
+| `lib-outline-course.js` | Outline block reader plus the item-type, video-format and duration rules shared by every `*-parse-course.js`. Drops struck-through runs, so superseded draft wording never splices into its own replacement — the outline equivalent of `lib-lines-strikeaware.js`. `cellText` also converts Word's private-use bullet glyphs to `• ` and normalises non-breaking spaces — see SETUP §7. |
 | `lib-lines.js` | Paragraph extractor that splits on `<w:br/>` — several sources put options on break-separated lines inside one paragraph. |
 | `lib-lines-strikeaware.js` | As above, but **drops struck-through runs**. Two sources mark superseded wording with `<w:strike w:val="1"/>` while keeping the replacement inline. |
 | `tool-extract-formatted.js` | Debug dump with bold/colour/style annotations — first thing to run against an unfamiliar source. |
