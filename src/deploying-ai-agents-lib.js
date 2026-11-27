@@ -261,7 +261,20 @@ function finish(rec, cited, issues, where, overrideTitle) {
   // later check matches on. The prefix applies to a near-matched title too, since the kind is
   // the outline's either way.
   const title = overrideTitle || rec.title;
-  const shown = (rec.titlePrefix || '') + title;
+  // ONE COLON PER REFERENCE — the one that introduces the title after the asset kind. A
+  // colon INSIDE the title makes a second, and Coursera refuses the whole document with
+  // "Content couldn't be processed", naming nothing. Confirmed on 2026-11-27: GenAIOps
+  // Course 3's graded quizzes failed for days while its practice quizzes imported, and the
+  // only difference was question 7 citing
+  //
+  //     Module 2 Lesson 3 Reading: Summary and Highlights: Drift Detection for Data, …
+  //
+  // Replacing that colon with an en dash fixed it. Titles with a natural colon are common —
+  // "Bloom's Taxonomy: Theory", "Build, Buy, or Partner: Making the Right Growth Decision" —
+  // so this is applied in every course rather than left to be rediscovered. No words are
+  // added or removed; only the punctuation changes, and the title reads as the author wrote
+  // it. `check-reference-colons.js` fails the build if one ever gets through.
+  const shown = ((rec.titlePrefix || '') + title).replace(/\s*:\s*/g, ' – ');
   // The PARTS are stored, not just the finished string, because two documents in this course
   // spell the same reference differently — one numbers its videos, the rest do not — and that
   // is a per-document build decision, not a property of the asset. refString() assembles them.

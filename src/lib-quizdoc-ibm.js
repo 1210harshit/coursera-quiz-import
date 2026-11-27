@@ -88,7 +88,12 @@ const INCORRECT_EXPL = /^Incorrect\s+Explanation\s*[:–—-]*\s*([A-F])\s*[:–
 // heading therefore switches the reader into explanation mode until the next question.
 const INCORRECT_EXPL_HEAD = /^Incorrect\s+Explanations\s*[:–—-]?\s*$/i;
 const LETTERED_LINE = /^\*?\s*([A-F])\s*[:.]\s+(.+)$/;
-const ASSET = /^Asset\s*:\s*(.+)$/i;
+// "Assets:" as well as "Asset:". GenAIOps Course 3 writes the plural on the ten questions
+// that cite more than one item, and singular elsewhere, in both of the grammars it mixes.
+// Unrecognised, those lines fell through and the questions cited nothing at all. A tally of
+// all 420 stored source documents found the plural only in that course, so the optional "s"
+// can only ever match a line that currently matches nothing.
+const ASSET = /^Assets?\s*:\s*(.+)$/i;
 // "M3L1V2 + M3L2V1 + M3L3V2 + Module 3 Summary Reading" on a line of its own -- see the
 // branch that consumes it for why this is deliberately narrow.
 // "Sources Integrated:" with the sources on the lines BELOW it, one per line. The final
@@ -112,6 +117,21 @@ const SOURCES_CODE_ONLY =
 // the marker, and the builder writes Coursera's single star regardless of how many the source
 // used.
 const OPTION = /^(\*+)?\s*([A-F])\s*[:.]\s+(.+)$/;
+// A STRAY MARK CAN SIT IN FRONT OF THE LABEL. One option in the GenAIOps Course 1 Module 2
+// Lesson 3 practice quiz is written ".C: A successful model call …" — a leftover full stop
+// ahead of the letter. The line then matches OPTION not at all, so the question arrives with
+// three options, its fourth explanation attaches to nothing, and the counts blame the question
+// rather than the typo.
+//
+// Stripped before the match rather than folded into OPTION, deliberately: OPTION's three
+// capture groups are read in six places here and widening it would renumber all of them for
+// the six courses that share this reader. The mark is reported by whichever parser is running,
+// never silently absorbed.
+//
+// Kept narrow — one run of stops, commas, semicolons, closing brackets, bullets or dashes, and
+// only when the line does not already parse as an option. A scan of all 389 stored source
+// documents found exactly one line of this shape, which is what makes the allowance safe.
+const STRAY_BEFORE_LABEL = /^([.,;)\]•-]+)\s*(?=\**\s*[A-F]\s*[:.]\s+\S)/;
 const FEEDBACK = /^Feedback\s*[:–-]\s*(.+)$/i;
 // The verdict word the source opens every explanation with. Coursera already tells the learner
 // whether the option they chose was right, so the word is consumed as the key and removed from
@@ -132,8 +152,18 @@ const IS_CORRECT = /^(Correct|Right)\b/i;
 // matched here is skipped wherever it falls.
 // The Module 1 graded quiz wraps its end marker in asterisks — "*----- End of importable
 // content -----*" — so the decoration is part of the pattern rather than assumed away.
-const NOISE = /^[*\s]*-+\s*(Importable content starts here|End of importable content)\s*-+[*\s]*$/i;
-const END_MARKER = /^[*\s]*-+\s*End of importable content\s*-+[*\s]*$/i;
+// TWO SPELLINGS OF THE CLOSING MARKER. Almost every file writes "End of importable content";
+// the GenAIOps Course 2 Module 3 Lesson 3 practice quiz writes "Importable content ends here"
+// instead. Unrecognised, it fell through to the question's option list and was reported as
+// "unrecognised line after the options", which reads like lost content rather than a marker
+// spelled differently. A tally of every marker-shaped line in all stored sources found 125
+// "starts here", 119 + 4 + 2 + 1 of the four "End of" variants, and 2 of this one.
+//
+// Only the SOURCE side is affected. Built documents always carry Coursera's own wording,
+// which the builder writes and the verifier checks, so this changes nothing downstream.
+const END_TEXT = '(?:End of importable content|Importable content ends here)';
+const NOISE = new RegExp(`^[*\\s]*-+\\s*(?:Importable content starts here|${END_TEXT})\\s*-+[*\\s]*$`, 'i');
+const END_MARKER = new RegExp(`^[*\\s]*-+\\s*${END_TEXT}\\s*-+[*\\s]*$`, 'i');
 
 const clean = s => String(s).replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -164,9 +194,34 @@ const CODE_SPLIT = /\s*(?:[;,]\s*(?=M\d+L\d+)|\s+\+\s+)/i;
 function splitAssets(text) {
   const raw = String(text);
   const parts = /M\d+L\d+/i.test(raw) ? raw.split(CODE_SPLIT) : raw.split(';');
-  return parts.map(part => {
-    const t = clean(part);
+  const suffixLessons = [];
+  const suffixModules = [];
+  return parts.map((part, idx) => {
+    let t = clean(part);
     if (!t) return null;
+    // A TRAILING ", Lesson N" STATES WHERE THE ASSET LIVES. GenAIOps Course 3 writes
+    // "Monitoring AI Systems in Production (Video), Lesson 1" on seventeen of its asset lines,
+    // the comma sometimes absent. The trailing-kind branch below expects the bracketed kind to
+    // END the string, so the suffix stopped it matching and the whole line was taken as a
+    // title that resolved against nothing — every question in the Module 1 graded quiz carried
+    // no reference at all.
+    //
+    // It is not noise to discard: it is the same statement as the M<x>L<y> code the other
+    // branches read, so it is captured as statedLesson and checked against where the outline
+    // actually puts the asset, exactly as a code would be. A tally of all 420 stored documents
+    // found this suffix only in that course.
+    const ls = /^(.*\))\s*,?\s*Lesson\s*(\d+)\s*$/i.exec(t);
+    if (ls) { t = clean(ls[1]); suffixLessons[idx] = Number(ls[2]); }
+    // THE MODULE CAN SIT INSIDE THE SAME PARENTHESIS AS THE KIND. The GenAIOps Course 3 final
+    // exam writes "Monitoring AI Systems in Production (Video, Module 1)" on all ten of its
+    // asset lines — the exam draws on every module, so each citation says which one. The
+    // trailing-kind branch reads what is inside the brackets as the kind, and "Video, Module 1"
+    // is not a kind, so every citation in the exam resolved against nothing.
+    //
+    // Split into the kind the branch expects plus a stated module, which is the same thing the
+    // M<x>L<y> codes carry and is checked the same way.
+    const km = /^(.*)\((Video|Reading|Lab|FAQ|Demo Video|Case Study|Expert Viewpoint|Discussion Prompt|Downloadable Resource)\s*,\s*Module\s*(\d+)\s*\)\s*$/i.exec(t);
+    if (km) { t = clean(`${km[1]}(${km[2]})`); suffixModules[idx] = Number(km[3]); }
     // The code IS the mapping, so it is kept beside the title and the resolver can use it
     // directly rather than matching prose against the outline.
     // "Reading M4L1: A Scoping Cheat Sheet for First Agents" — the kind and the lesson code
@@ -229,7 +284,19 @@ function splitAssets(text) {
       statedModule: m[1] ? Number(m[1]) : null,
       raw: t,
     };
-  }).filter(Boolean);
+  })
+    // The ", Lesson N" and "(Kind, Module N)" statements stripped at the top of the mapper,
+    // applied to whichever branch the part took. Done here rather than at each of the six
+    // return points, and only where the branch did not already state one of its own — a code
+    // like "Reading M4L1:" is the stronger statement and keeps precedence.
+    .map((o, idx) => {
+      if (!o) return o;
+      let r = o;
+      if (suffixLessons[idx] != null && r.statedLesson == null) r = { ...r, statedLesson: suffixLessons[idx] };
+      if (suffixModules[idx] != null && r.statedModule == null) r = { ...r, statedModule: suffixModules[idx] };
+      return r;
+    })
+    .filter(Boolean);
 }
 
 // Header fields, each written several ways across the seventeen files:
@@ -294,18 +361,75 @@ function readSettings(head) {
 // Reads one source document. Returns the header fields, the settings table, the stated
 // objectives and the questions — plus `issues`, every deviation this reader had to absorb.
 // Nothing is repaired silently: each parser decides what to do with the issue list.
-function readQuizDoc(docxDir, label) {
+// `opts.normalise`, when given, receives the document's [{text, bold}] lines and returns a
+// replacement list. It exists for sources whose questions are laid out as a TABLE rather than
+// as paragraphs: lib-lines flattens a table cell by cell, so the rows arrive as a predictable
+// run of lines that a course-specific function can fold back into the paragraph grammar this
+// reader already understands. GenAIOps Course 3 mixes both layouts across its twelve files
+// and is the first to need it.
+//
+// Opt-in on purpose. Omitted, nothing changes, so no existing course can be affected by a
+// transform written for another one's table.
+function readQuizDoc(docxDir, label, opts = {}) {
   // Read with formatting: some sources mark the key with BOLD and nothing else, and struck
   // text is deleted text, so the text used here comes from the formatting-aware reader.
-  const allBold = linesWithBold(path.join(docxDir, 'word', 'document.xml'));
-  const all = allBold.map(x => x.text);
+  const allBold = linesWithBold(path.join(docxDir, 'word', 'document.xml'))
+    // A MARKER AND A QUESTION HEADER CAN SHARE A PARAGRAPH. The GenAIOps Course 2 final exam
+    // writes "----- Importable content starts here ----- Question 1 - Multiple choice,
+    // shuffle" as one paragraph. That line satisfies neither pattern — NOISE is anchored to
+    // end-of-line and Q_HEAD to start-of-line — so it fell through as unrecognised text ahead
+    // of the first question header, and Question 1 vanished with its four options and four
+    // explanations. The document reported nine questions against a settings table and a
+    // syllabus that both say ten, which is the only reason it was caught.
+    //
+    // Split rather than widened: both patterns keep their anchors and every other document is
+    // untouched. A scan of all 407 stored source documents found exactly one line of this
+    // shape. The marker half keeps the original line's bold flag; the flag only ever matters
+    // for option lines, which neither half is.
+    .flatMap(x => {
+      const m = /^([*\s]*-+\s*(?:Importable content starts here|End of importable content|Importable content ends here)\s*-+[*\s]*)(\S.*)$/i.exec(x.text);
+      return m ? [{ ...x, text: m[1] }, { ...x, text: m[2] }] : [x];
+    });
+  // See the note on `opts.normalise` above readQuizDoc.
+  const normalised = opts.normalise ? opts.normalise(allBold, label) : allBold;
+  const all = normalised.map(x => x.text);
   const issues = [];
 
   const firstQ = all.findIndex(l => Q_HEAD.test(clean(l)));
   if (firstQ < 0) throw new Error(`${label}: no "Question N - …" header anywhere in the document`);
   const head = all.slice(0, firstQ).map(clean);
   const body = all.slice(firstQ).map(clean);
-  const bodyBold = allBold.slice(firstQ).map(x => x.bold);
+  // `normalised`, not `allBold`: the bold flags are indexed against the SAME list the text
+  // came from. Slicing the pre-normalise list would shift every flag by however many lines a
+  // transform added or removed, and the flags decide the answer key in the sources that mark
+  // it with bold and nothing else.
+  const bodyBold = normalised.slice(firstQ).map(x => x.bold);
+
+  // THE FIRST QUESTION'S ASSET LINE CAN SIT ABOVE ITS HEADER, which puts it in `head` and out
+  // of the loop's reach. The loop does have a branch for an Asset line "ahead of its own
+  // question header", but it can only ever see lines from `body` onwards, so for the FIRST
+  // question that branch is unreachable and the line was simply discarded.
+  //
+  // Three of Optimizing Cost, Latency, and Performance's practice quizzes write every asset
+  // that way, above the header it belongs to, and question 1 of each reached the learner with
+  // no reference at all while questions 2 onward were correct — a silent one-line loss, not a
+  // shift, so the leftover test further down could not catch it either. Zero Trust Security's
+  // M4L1 and M4L2 practice quizzes have the same shape and the same missing reference.
+  //
+  // Only lines at or after the "Importable content starts here" marker are taken: an "Asset:"
+  // line above that marker is part of the planning scaffolding, not a citation. A scan of all
+  // 178 stored source documents found this construct in 7, and in the 171 others `head` has
+  // no Asset line after the marker at all, so nothing else can change.
+  // A DOCUMENT WITH NO START MARKER still has a head, and the asset can still be in it.
+  // Cybersecurity Course 3's M1L1 practice quiz writes no "Importable content starts here"
+  // line at all and puts "Asset: Video: Designing a Repeatable Response Workflow" directly
+  // above "Question 1:". With no marker to slice from, this returned nothing and question 1
+  // again reached the learner with no reference — the same one-line loss as above, reached by
+  // a different route. Searching the whole head is safe: ASSET only matches a line that opens
+  // "Asset:", which nothing in a settings table or an objectives list does.
+  const headStart = head.findIndex(l => NOISE.test(l));
+  const preAssets = (headStart < 0 ? head : head.slice(headStart + 1))
+    .map(l => ASSET.exec(l)).filter(Boolean).map(m => clean(m[1]));
 
   // ---- header ----
   const findHead = re => { const l = head.find(x => re.test(x)); return l || ''; };
@@ -340,13 +464,84 @@ function readQuizDoc(docxDir, label) {
     // "…learning objectives addressed in this quiz:" is the usual heading, but the Business
     // Process Automation final exam writes "Learning Objectives for the Final Exam", so the
     // preposition is part of the pattern rather than the word "addressed" alone.
-    const j = head.findIndex(l => /learning\s*objectives?\s*(addressed|for\b)/i.test(l));
+    const LO_LONG = /learning\s*objectives?\s*(addressed|for\b)/i;
+    // A BARE "Learning Objectives" heading, with no "addressed in this quiz" after it. Two
+    // documents use it as their only heading — Optimizing Cost, Latency, and Performance's
+    // M1L3 practice quiz and Monitoring and Observability's M3L3 — and their four objectives
+    // each were read as absent, leaving the Guide Section of both with none.
+    //
+    // THE LONG FORM IS TRIED FIRST, and this is only a fallback, because four other documents
+    // carry BOTH: a bare "Learning Objectives" section title with the long sub-heading on the
+    // very next line. Matching the bare line there would start the list one line too early and
+    // turn "Module-level learning objectives addressed in this quiz:" into an objective of its
+    // own. Preferring the long form leaves those four reading exactly as they did.
+    // "LEVEL" IS OPTIONAL. Three of this family's documents head the section "Lesson learning
+    // objectives" — the qualifier without "level" and without a colon — and the pattern as
+    // written required either the full "Lesson-level" or no qualifier at all, so the heading
+    // went unrecognised and the quiz read as having no objectives. A sweep of all 450 stored
+    // source documents for a line that this widening newly matches found five, and no line
+    // that is anything but the section heading:
+    //
+    //     cyber-course-2  M1L1-PQ, M1L2-PQ, M2L3-PQ      "Lesson learning objectives"
+    //     genaiops-c1     M3L1 practice quiz             "Lesson learning objectives"
+    //     genaiops-c2     M3L2 practice quiz             "Lesson learning objectives"
+    //
+    // The last two are DELIVERED documents whose Guide Section shipped with an empty
+    // objectives list; they are corrected by rebuilding, which is a separate decision.
+    // Nothing else in the corpus changes — checked by byte-diffing all 248 parsers' output.
+    // THE QUALIFIER IS ANY RUN OF "course", "module", "lesson" and "level". A FINAL EXAM heads
+    // its objectives at COURSE level, which the module/lesson wording could not reach:
+    //
+    //     cyber-course-3  final exam   "Course / module learning objectives"   6 objectives
+    //     genaiops-c1     final exam   "Course learning objectives"            delivered
+    //
+    // The second is a delivered document whose Guide Section shipped with no objectives. A
+    // sweep of all 464 stored sources for a "learning objectives" line that neither pattern
+    // matched returned exactly these two, so this widening gains those and touches nothing
+    // else — confirmed by byte-diffing all 252 parsers. The anchored end plus the optional
+    // colon is what keeps it off a real objective: it must be the whole line.
+    const LO_BARE = /^(?:(?:course|module|lesson|level)[-\s\/]*)*learning\s*objectives\s*:?$/i;
+    // A SUB-HEADING UNDER THE BARE ONE, which is where the two forms meet. Monitoring and
+    // Observability's M3L3 practice quiz writes "Learning Objectives" and then "Lesson-level
+    // objectives addressed in this quiz:" — note "objectives" with no "learning" — so the
+    // finders below land on the bare line and the loop's very next line is another heading.
+    // That one begins "Lesson", which the structural-break test reads as a "Lesson:" field
+    // line, so the list ended before it began and all four objectives were lost. Recognised
+    // as a heading ahead of that test, it is skipped instead.
+    //
+    // The trailing colon is required, which is what keeps this off a real objective: the
+    // Business Process Automation final exam's own heading, "Learning Objectives for the
+    // Final Exam", has none and is matched by LO_LONG as the section start, not skipped.
+    const LO_SUBHEAD = /objectives?\b[^:]*\b(?:addressed|for)\b[^:]*:$/i;
+    let j = head.findIndex(l => LO_LONG.test(l));
+    if (j < 0) j = head.findIndex(l => LO_BARE.test(l));
     if (j < 0) issues.push('no "learning objectives addressed in this quiz" section');
     else {
       for (let k = j + 1; k < head.length; k++) {
         const l = head[k];
         if (!l) continue;
-        if (/^(Course|Module|Lesson|Scope|Mapped to|Field|Value)\b/i.test(l)) break;
+        // A second heading line is a heading, never an objective — see LO_BARE above.
+        if (LO_LONG.test(l) || LO_BARE.test(l) || LO_SUBHEAD.test(l)) continue;
+        // A FIELD LINE ENDS THE LIST; AN OBJECTIVE THAT OPENS ON THE SAME WORD DOES NOT.
+        // Matching the bare word was enough to lose all four objectives of Cybersecurity
+        // Course 3's M1L3 practice quiz, whose first one reads "Scope an incident accurately
+        // from the available evidence." — "Scope" as a verb, not the "Scope:" field. The list
+        // ended before it began and the Guide Section fell back to the module's objectives,
+        // which is a quieter failure than an empty section and just as wrong.
+        //
+        // What these actually have to break on, across the corpus, is a LABEL: "Course: …",
+        // "Module Name: 1 - …", "Module 1: …", "Lesson 2: …", "Scope: Modules 1–3",
+        // "Mapped to: …", and the bare table-header cells "Field" and "Value". All but the
+        // last two carry a colon within a few characters of the word, which is what separates
+        // them from a sentence that merely starts there.
+        //
+        // A BARE FIELD WORD STILL BREAKS, and that half is not optional: GenAIOps Course 3's
+        // final exam follows its objectives with a coverage table whose header cells are
+        // "Module", "Objectives assessed" and "Questions". Dropping to the colon rule alone
+        // let all three through as objectives five, six and seven — caught by byte-diffing
+        // every parser, which is the only reason it did not ship.
+        if (/^(?:(?:Course|Module|Lesson|Scope|Mapped to)\b[^:]{0,20}:|(?:Course|Module|Lesson|Scope|Field|Value)\s*$)/i
+          .test(l)) break;
         if (SETTING_LABELS.some(([, re]) => re.test(l.replace(/:.*$/, '').trim()))) break;
         if (NOISE.test(l)) break;
         if (/^By the end/i.test(l)) continue;
@@ -370,7 +565,10 @@ function readQuizDoc(docxDir, label) {
   const questions = [];
   let q = null;
   let pendingOption = null;   // option awaiting its Feedback line
-  let carried = null;         // Asset line read ahead of its own question header
+  // Seeded from `head`: see the note on preAssets. Joined the same way the in-loop branch
+  // joins consecutive Asset lines, so one question stating two assets on two lines reads the
+  // same whichever side of the header they sit on.
+  let carried = preAssets.length ? preAssets.join('; ') : null;
   // THE LABEL AND ITS TEXT CAN SIT ON SEPARATE LINES. Cybersecurity Course 1 writes
   // "Correct Explanation:" / "Incorrect Explanation - A:" on one line and the explanation on
   // the next, where the other courses put both on one. Matching the label and taking its empty
@@ -447,6 +645,15 @@ function readQuizDoc(docxDir, label) {
     if (as) {
       const text = clean(as[1]);
       if (q.options.length) { carried = carried ? carried + '; ' + text : text; continue; }
+      if (q.assetRaw === text) {
+        // THE SAME ASSET STATED TWICE, once above the header and once below the prompt. The
+        // M1L1 practice quiz of Optimizing Cost, Latency, and Performance writes question 1
+        // both ways; now that the line above the header is no longer discarded, merging would
+        // give that question the identical reference twice over in all four of its feedback
+        // blocks. A restatement is not a second citation.
+        pendingOption = null;
+        continue;
+      }
       if (q.assetRaw) {
         // A second Asset line inside one question. Merge rather than drop.
         q.assetRaw += '; ' + text;
@@ -549,7 +756,15 @@ function readQuizDoc(docxDir, label) {
       continue;
     }
 
-    const op = OPTION.exec(line);
+    // See STRAY_BEFORE_LABEL: only consulted when the line does not already parse as an
+    // option, so a well-formed source never reaches it.
+    let optLine = line;
+    let strayMark = null;
+    if (!OPTION.test(optLine)) {
+      const sm = STRAY_BEFORE_LABEL.exec(optLine);
+      if (sm) { strayMark = sm[1]; optLine = optLine.slice(sm[1].length).replace(/^\s+/, ''); }
+    }
+    const op = OPTION.exec(optLine);
     // A prompt sentence can legitimately open "A: " only if it is one character long, so the
     // option test is safe here; but a prompt that has not been seen yet takes precedence,
     // because every question states its prompt before its first option.
@@ -565,6 +780,11 @@ function readQuizDoc(docxDir, label) {
       q.promptMissing = true;
     }
     if (op && (q.prompt.length || q.promptMissing)) {
+      if (strayMark) {
+        issues.push(`Q${q.num}: option ${op[2]} is written "${strayMark}${op[2]}:" — a stray `
+          + `"${strayMark}" sits in front of the label. Read as option ${op[2]} and the mark `
+          + 'dropped; fix the source so the next build does not have to.');
+      }
       // AN OPTION AND ITS FEEDBACK CAN SHARE A LINE. Six of these questions run the two
       // together — "A: <option text>.   Feedback: Incorrect. <explanation>" — where the rest
       // put them in separate paragraphs. Taking the whole line as the option text would leave
@@ -664,8 +884,16 @@ function readQuizDoc(docxDir, label) {
   for (const qq of questions) {
     if (!qq.prompt.length) issues.push(`Q${qq.num}: no prompt line between the header and the options`);
     if (qq.prompt.length > 1) {
-      issues.push(`Q${qq.num}: prompt is ${qq.prompt.length} lines; they are joined into one, `
-        + 'because a second prompt paragraph is an unmatched line for the importer');
+      // The REASON this message used to give — "a second prompt paragraph is an unmatched line
+      // for the importer" — is the hypothesis SETUP section 7 records as retired on
+      // 2026-09-29, so quoting it here contradicted the repo's own documentation. The joining
+      // itself stays, on better evidence: CSTP Course 4 was built with the source's two prompt
+      // paragraphs and Coursera rejected the WHOLE document with the importable-content-marker
+      // error, while HAWS Courses 3 and 4, built the same week with single-paragraph prompts,
+      // imported cleanly. Joining loses no word — only the paragraph break becomes a space.
+      issues.push(`Q${qq.num}: prompt is ${qq.prompt.length} lines, joined into one. A `
+        + 'multi-paragraph prompt is what Coursera rejected the CSTP Course 4 upload over; the '
+        + 'break becomes a space and no word is lost.');
     }
     if (!qq.assets.length) issues.push(`Q${qq.num}: no "Asset:" line — no reference can be written`);
     if (qq.options.length !== 4) issues.push(`Q${qq.num}: ${qq.options.length} options, expected 4`);
