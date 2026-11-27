@@ -177,13 +177,25 @@ one.
 
 ### Available slugs
 
-`osha` · `genai-marketing` · `genai-marketing-explanations` · `genai-retail` ·
-`genai-appdev` · `management-mastery` · `pm-course-1` · `pm-course-2` · `pm-course-3` ·
-`cstp-course-1` · `google-ads` · `google-ads-final` · `paid-social` · `paid-ads-11` ·
-`ai-toolkit-v2` · `digital-marketing` · `shopify` · `websites-15` · `ai-products` ·
-`soft-skills` · `digital-transformation` · `deploying-ai-agents` · `bpa-course-1` ·
-`agentic-teams-c1` · `agentic-teams-c2` · `bpa-course-3` · `ai-automation` · `oversight` ·
-`ai-workflows`
+Derived from `src/*-parse-outline.js`, which is the list that is actually runnable — regenerate
+it rather than appending to it, because it fell twenty courses behind before anyone noticed.
+Each of these has the thirteen-script IBM-format pipeline unless noted below.
+
+`agentic-teams-c1` · `agentic-teams-c2` · `agentic-teams-c5` · `agile-pm` · `ai-products` ·
+`ai-toolkit-v2` · `bpa-course-1` · `bpa-course-2` · `bpa-course-3` · `coaching-mentoring` ·
+`communication-skills` · `conflict-resolution` · `critical-thinking` · `cstp-course-1` ·
+`cstp-course-2` · `cstp-course-3` · `cstp-course-4` · `cyber-course-1` · `cyber-course-2` ·
+`cyber-course-3` · `dei` · `deploying-ai-agents` · `digital-marketing` ·
+`digital-transformation` · `emotional-intelligence` · `genai-appdev` · `genai-legal` ·
+`genai-marketing` · `genai-pm` · `genai-product-design` · `genai-retail` · `genaiops-c1` ·
+`genaiops-c2` · `genaiops-c3` · `genaiops-c4` · `google-ads` · `google-ads-final` ·
+`growing-business` · `haws-c1` · `haws-c2` · `haws-c3` · `haws-c4` ·
+`high-performance-teams` · `inclusive-leadership` · `instructional-design` · `leadership` ·
+`lean-six-sigma` · `management-mastery` · `managing` · `managing-dummies` · `mindfulness` ·
+`negotiating` · `operations-management` · `osha` · `paid-ads-11` · `paid-social` ·
+`performance-appraisals` · `pharma` · `pm-course-1` · `pm-course-2` · `pm-course-3` ·
+`pm-course-4` · `resilience` · `scrum` · `shopify` · `soft-skills` ·
+`storytelling-presentations` · `supply-chain` · `websites-15`
 
 `ai-automation`, `oversight` and `ai-workflows` are one-document-per-quiz courses that arrived
 with **no syllabus**. Each has its own `<slug>-parse.js` writing `quizzes.json`, feeding the
@@ -574,6 +586,79 @@ grep -c '<w:br'    work/<slug>/quiz/word/document.xml   # line breaks inside par
 | Several options, or two explanations, run together inside ONE paragraph | `genai-legal` |
 | `Correct Answer: B` and `Mapped to: M1L1V1` split by a `<w:br/>` inside one paragraph | `genai-legal` |
 | Some questions styled Heading2 and others left as plain paragraphs | `genai-legal` |
+| A stray mark in front of an option label (`.C: …`) | `genaiops-c1` |
+| A passing threshold written `4 of 5` rather than `4/5` or `80%` | `genaiops-c1` |
+| An explanation that legitimately opens on a lowercase resource name | `genaiops-c1` |
+| A graded quiz the syllabus declares but the hand-off does not include | `genaiops-c1` |
+| The start marker and a question header sharing ONE paragraph | `genaiops-c2` |
+| `----- Importable content ends here -----` instead of `End of importable content` | `genaiops-c2` |
+| A module with no `Assets` heading where every other module has one | `genaiops-c2` |
+| Coded filenames where the `M` follows an underscore (`EN029_PQ_M1L3_…`) | `genaiops-c2` |
+| Questions laid out as a TABLE (`Option \| Answer \| Feedback`) beside paragraph questions, in the same course | `genaiops-c3` |
+| A file whose only clue to what it is, and where it belongs, is its own title | `genaiops-c3` |
+| `Grade setting (practice or graded)` — a label that names both values | `genaiops-c3` |
+| An asset citation carrying its location: `… (Video), Lesson 1` / `… (Video, Module 1)` | `genaiops-c3` |
+| A four-module course, where the final exam sits in Module 4 rather than Module 5 | `genaiops-c3` |
+| A feedback sentence broken across two paragraphs, so its second half orphans after the options | `genaiops-c4` |
+| `Asset:` written ABOVE the first question's header, where it falls outside the reader's body | `genaiops-c4`, `cyber-course-1` |
+| The same asset stated twice for one question, above the header and below the prompt | `genaiops-c4` |
+| A bare `Learning Objectives` heading with no "addressed in this quiz" after it | `genaiops-c4`, `genaiops-c3` |
+| A bare passing threshold equal to the table's own question count, with fewer questions written | `genaiops-c4` |
+| `Question N – …` with an EN DASH rather than a hyphen | `genaiops-c4` |
+| The correct option marked in **ITALICS**, with no star and no `Correct Answer:` line | `cyber-course-2` |
+| `Source:` where every other file writes `Asset:`, one line below the question header | `cyber-course-2` |
+| `Explanation:` plus a `Why the other options are incorrect:` heading over bare `A.` reason lines | `cyber-course-2` |
+| A question stating only which options are WRONG, leaving the key to the leftover letter | `cyber-course-2` |
+| The verdict written `Correct answer.` / `Incorrect answer.` — a word between verdict and stop | `cyber-course-2` |
+| A prompt and its first option run together with no space (`…response?A: Suppress …`) | `cyber-course-2` |
+| A passing threshold written `4 out of 5` rather than `4 of 5`, `4/5` or `80%` | `cyber-course-2` |
+| `Expert Viewpoints — <title>`: a kind missing from the prefix list, separated by an em dash | `cyber-course-2` |
+| FIVE question grammars across sixteen files, six of them in the standard form | `cyber-course-2` |
+| A graded quiz and a practice quiz whose filenames are nothing but production codes (`EN087`, `EN084`) | `cyber-course-2` |
+| A citation carrying its own placement: `Lesson 1, Video 1: <title>` | `cyber-course-3` |
+| A final exam citing `Module 1, Lesson 2, Video 3: <title>` — module, lesson, kind and ordinal | `cyber-course-3` |
+| A bare `Asset:` label with its citations on the NEXT line, so they fold into the prompt | `cyber-course-3` |
+| A quiz and the syllabus titling the same video differently, resolvable only by position | `cyber-course-3` |
+| `Asset: Reading; <title>` — a semicolon where the kind-title colon belongs | `cyber-course-3` |
+| An objective opening on the word "Scope", read as a `Scope:` field line and ending the list | `cyber-course-3` |
+| `Course / module learning objectives` as the heading — course level, not module or lesson | `cyber-course-3`, `genaiops-c1` |
+| No `Importable content starts here` marker at all, with an `Asset:` line above question 1 | `cyber-course-3` |
+| A syllabus with no `Course Syllabus` heading — the title is simply the first line | `cyber-course-3` |
+| A syllabus with no `What You Will Learn` section at all | `cyber-course-3` |
+| A final exam stating no `Attempts` row | `cyber-course-3` |
+
+> **A delivered course can be carrying one of these.** Readers fixed for one course keep
+> turning up documents already shipped with the same fault. Re-running every parser after
+> each shared-library change has found **nine** so far:
+>
+> | Delivered document | What it shipped without | Found while adding |
+> |---|---|---|
+> | `cyber-course-1` M4L1, M4L2 practice | question 1 of each cited nothing | `genaiops-c4` |
+> | `genaiops-c3` M3L3 practice | no objectives in the Guide Section | `genaiops-c4` |
+> | `agentic-teams-c2` final exam | no objectives in the Guide Section | `genaiops-c4` |
+> | `genaiops-c1` M3L1 practice | objectives lost to a heading reading `Lesson learning objectives`, no "level" | `cyber-course-2` |
+> | `genaiops-c2` M3L2 practice | the same heading | `cyber-course-2` |
+> | `agentic-teams-c2` M4L1 practice | six objectives lost because the first opens on the word "Scope" | `cyber-course-3` |
+> | `agentic-teams-c5` M4L1 practice | four objectives, same cause | `cyber-course-3` |
+> | `genaiops-c1` final exam | objectives lost to a heading reading `Course learning objectives` | `cyber-course-3` |
+>
+> Rebuilding them is a separate decision; every fix is already in the reader, so a rebuild
+> picks it up. Note the pattern: a reader fixed for the course in hand is worth re-running
+> across all of them *immediately*, because the same authors reuse the same templates.
+
+> **Run the whole corpus before widening a shared reader, and byte-diff it after.** Every
+> change above was preceded by a sweep of all 464 stored source documents for the shape in
+> question and followed by a diff of all 252 parsers' JSON. **The diff is not a formality:**
+> loosening the objectives-list break test to stop it ending on the word "Scope" also let
+> three table-header cells — `Module`, `Objectives assessed`, `Questions` — into
+> `genaiops-c3`'s final exam as objectives five, six and seven. Nothing else would have
+> caught that. The diff also showed the
+> `Correct answer.` verdict to be unique to one document in the corpus — and that two
+> `genaiops-c2` explanations open with the word Wrong as ordinary prose, so loosening the
+> shared verdict pattern to accept it would have keyed the wrong option there. Shapes that
+> are unique to one course belong in that course's own `normalise` hook, not in
+> `lib-quizdoc-ibm.js`; `cyber-course-2-lib.js` holds ten of them and
+> `cyber-course-3-lib.js` five, each recording why it is local.
 
 ### When a source states its mapping twice
 
@@ -698,10 +783,68 @@ them before editing a builder.
 | Guidance prose must not quote the marker strings | Coursera's own template says *"Imported content"* in prose and *"Importable content"* in the markers, deliberately. |
 | Prompt length is fine | Coursera's reference prompt is ~800 characters — length is never the cause. |
 | A bulleted cell carries Word's own bullet **character** | Word writes a bulleted list's marker as a glyph from the Symbol or Wingdings font, which lands in the Unicode private-use area (`U+F0B7` for Symbol's bullet; `U+F0A7`, `U+F0D8`, `U+F076` for Wingdings). The XML holds the character, not a list style, so it is read as content and imports as a replacement box in front of the first word. `cellText` converts a leading run of them to `• ` (2026-11-16). Found in four outlines, always a bulleted discussion question. **`cstp-course-3` and `haws-c2` were delivered before the fix and carry the box in their Discussion Prompt** — rebuild them if they matter. |
+| **A reference must contain exactly ONE colon** | The colon after the asset kind introduces the title. A colon INSIDE the title makes a second one, and Coursera refuses the whole document with *"Content couldn't be processed"* — a file-level error naming no question and no line. Titles with a colon are ordinary: `Bloom's Taxonomy: Theory`, `Build, Buy, or Partner: Making the Right Growth Decision`, `FAQ: When Drift Detection Fires but the Cause Is Upstream`. 55 of 611 delivered documents across 15 courses carried one when this was found (2026-11-27). The second and later colons become en dashes; no word changes. Enforced in fourteen course libraries at parse time, and on the built artefact by `check-reference-colons.js`, because eight affected courses assemble their references elsewhere. |
+
+**When a document is refused and nothing in it looks wrong, check the references first.** The
+colon rule above cost most of a week in November 2026 because every other property of the
+refused files matched one that imported — same package, same Guide Section, same paragraph
+properties, same grammar, same characters. It surfaced as *"graded quizzes fail, practice
+quizzes import"*, which looked like a length limit (ten questions against five) until the real
+cause turned up in question 7 — a question only the longer documents reach.
+
+Run all three checks before every delivery:
+
+```bash
+node src/check-reference-colons.js    "<output folder>"   # --fix repairs in place
+node src/normalise-import-section.js  "<output folder>"   # --check reports only
+node src/check-output-paths.js                            # MAX_PATH, whole output tree
+```
+
+The first two also accept a `work/<slug>/dist` directory, which is where to run them — fixing
+a built document before it is delivered rather than after.
 
 If an import fails, Coursera returns a `processing_error` file naming the questions. Compare
 the failures against the ones that succeeded — the difference is always structural, never
 about the wording.
+
+### Not every "cannot import" is the document
+
+**Check the delivery PATH before the document.** The full Windows path of a delivered file must
+stay inside MAX_PATH, 260 characters. Past it, the browser's file-picker cannot open the file at
+all: no upload starts, Coursera returns no error, and there is nothing to compare against a
+success — it simply looks as though the file is the wrong type.
+
+This is not hypothetical. GenAIOps Course 4's nine practice quizzes were delivered into
+
+```
+output/Quiz Import - upload to a Coursera quiz item/
+  Optimizing Cost, Latency, and Performance (GenAIOps Course 4) Practice Quizzes (9 lessons)/
+```
+
+which put them at **270 characters** and made all nine unselectable (2026-11-23). The documents
+were correct and verified clean; only the folder name was too long. Shortening the title to
+`Cost, Latency, Performance (GenAIOps Course 4)` brought them to 255.
+
+The budget, with the repository at its usual place under `Downloads`:
+
+| Part | Chars |
+|---|---|
+| `…\Coursera Import\Coursera Import\output\Quiz Import - upload to a Coursera quiz item\` | 109 |
+| longest file name, e.g. `Coursera_Import_Module_3_Lesson_3_Practice_Quiz_GenAIOps_Course_4.docx` | 70 |
+| **left for the folder name** | **79** |
+
+So a folder name over ~79 characters breaks the practice-quiz set of any course. Keep the title
+short rather than complete — `LLMOps Foundations`, not `LLMOps Foundations: LLM Deployment and
+RAG Pipelines`. Run
+
+```bash
+node src/check-output-paths.js
+```
+
+after copying into `output/`. It reports anything over the limit, names the folder, and says how
+many characters to cut; it also lists what is within 15 characters, which is where the next
+course will break. Agentic Teams Course 2's practice quizzes sit at 258 — two characters spare,
+working but not robust.
 
 ---
 
